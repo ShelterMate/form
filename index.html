@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>保護ハブアシスタント</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #FAF5ED;
+  --bg-soft: #FAF9F1;
+  --ink: #16284F;
+  --ink-soft: #5C6A88;
+  --terra: #F65262;
+  --terra-deep: #E23E4E;
+  --terra-soft: #FCE3E6;
+  --cream: #FCFBF5;
+  --line: #E6E2D4;
+  --jp-sans: 'Zen Maru Gothic', sans-serif;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--jp-sans);
+  font-size: 16px;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+body {
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px 16px;
+}
+
+/* チャット本体 (元はフローティング → 単体ページ用に中央配置) */
+.ai-chat-widget {
+  width: 440px;
+  max-width: 100%;
+  height: min(86vh, 760px);
+  background: var(--cream);
+  border: 1px solid var(--line);
+  border-radius: 28px;
+  box-shadow: 0 28px 80px rgba(43, 24, 16, 0.18), 0 4px 16px rgba(43, 24, 16, 0.08);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: aiChatSlideIn 0.32s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+@keyframes aiChatSlideIn {
+  from { transform: translateY(40px) scale(0.95); opacity: 0; }
+  to   { transform: translateY(0) scale(1); opacity: 1; }
+}
+.ai-chat-header {
+  background: linear-gradient(135deg, var(--terra) 0%, var(--terra-deep) 100%);
+  color: var(--cream);
+  padding: 18px 20px;
+  display: flex; align-items: center; gap: 13px;
+  flex-shrink: 0;
+}
+.ai-chat-avatar {
+  width: 46px; height: 46px;
+  border-radius: 50%;
+  background: var(--cream);
+  display: grid; place-items: center;
+  color: var(--terra-deep);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+}
+.ai-chat-avatar svg { width: 27px; height: 27px; }
+.ai-chat-title-area { flex: 1; }
+.ai-chat-title { font-weight: 800; font-size: 17px; letter-spacing: 0.02em; }
+.ai-chat-restart {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  height: 32px; padding: 0 12px;
+  border-radius: 100px;
+  color: var(--cream);
+  cursor: pointer;
+  font-family: var(--jp-sans); font-weight: 700; font-size: 12px;
+  transition: background 0.15s;
+}
+.ai-chat-restart:hover { background: rgba(255, 255, 255, 0.35); }
+.ai-chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 22px 18px 8px;
+  display: flex; flex-direction: column; gap: 14px;
+  background: var(--bg-soft);
+}
+.ai-msg {
+  max-width: 82%;
+  font-size: 14.5px;
+  line-height: 1.65;
+  border-radius: 18px;
+  padding: 12px 16px;
+  word-break: break-word;
+  white-space: pre-line;
+  animation: aiMsgIn 0.25s ease;
+  box-shadow: 0 1px 3px rgba(43, 24, 16, 0.06);
+}
+@keyframes aiMsgIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.ai-msg.bot {
+  background: var(--cream);
+  color: var(--ink);
+  border-bottom-left-radius: 4px;
+  align-self: flex-start;
+  border: 1px solid var(--line);
+}
+.ai-msg.user {
+  background: var(--terra);
+  color: var(--cream);
+  border-bottom-right-radius: 4px;
+  align-self: flex-end;
+}
+.ai-typing {
+  align-self: flex-start;
+  background: var(--cream);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px 16px;
+  display: flex; gap: 4px;
+}
+.ai-typing span {
+  width: 6px; height: 6px;
+  background: var(--ink-soft);
+  border-radius: 50%;
+  animation: aiTypingBounce 1.2s ease-in-out infinite;
+}
+.ai-typing span:nth-child(2) { animation-delay: 0.2s; }
+.ai-typing span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes aiTypingBounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-5px); opacity: 1; }
+}
+.ai-chat-input-area {
+  background: var(--cream);
+  border-top: 1px solid var(--line);
+  padding: 16px 18px 18px;
+  flex-shrink: 0;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.ai-chat-input-area:empty { padding: 0; border-top: none; }
+.ai-chat-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.ai-chat-chip {
+  font-family: var(--jp-sans);
+  font-size: 13.5px; font-weight: 600;
+  background: var(--bg-soft);
+  color: var(--ink);
+  border: 1.5px solid var(--line);
+  border-radius: 100px;
+  padding: 10px 18px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.ai-chat-chip:active { transform: scale(0.97); }
+.ai-chat-chip:hover {
+  border-color: var(--terra);
+  background: var(--terra-soft);
+  color: var(--terra-deep);
+}
+.ai-chat-chip-primary {
+  background: var(--terra) !important;
+  border-color: var(--terra) !important;
+  color: var(--cream) !important;
+  font-weight: 800;
+}
+.ai-chat-chip-primary:hover {
+  background: var(--terra-deep) !important;
+  border-color: var(--terra-deep) !important;
+}
+.ai-chat-text-row { display: flex; gap: 8px; align-items: stretch; }
+.ai-chat-text-input {
+  flex: 1; min-width: 0;
+  font-family: var(--jp-sans);
+  font-size: 16px;
+  color: var(--ink);
+  padding: 10px 14px;
+  border: 1.5px solid var(--line);
+  border-radius: 14px;
+  background: var(--cream);
+  outline: none;
+}
+.ai-chat-text-input:focus { border-color: var(--terra); }
+.ai-chat-suffix { align-self: center; font-weight: 700; color: var(--ink-soft); }
+.ai-chat-send-btn {
+  background: var(--terra);
+  color: var(--cream);
+  border: none;
+  border-radius: 14px;
+  padding: 0 18px;
+  cursor: pointer;
+  font-family: var(--jp-sans); font-weight: 700; font-size: 13px;
+  transition: background 0.15s;
+}
+.ai-chat-send-btn:hover { background: var(--terra-deep); }
+/* プライバシーポリシー (チャット内の文書カード) */
+.ai-privacy {
+  align-self: stretch;
+  flex-shrink: 0;
+  max-height: 300px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 16px 18px;
+  font-size: 12px;
+  line-height: 1.85;
+  color: var(--ink-soft);
+  animation: aiMsgIn 0.25s ease;
+}
+.ai-privacy-title { font-size: 14px; font-weight: 800; color: var(--ink); margin-bottom: 10px; }
+.ai-privacy h4 { font-size: 12.5px; font-weight: 800; color: var(--ink); margin: 14px 0 4px; }
+.ai-privacy p { margin: 0 0 8px; }
+.ai-privacy ol { margin: 0 0 8px; padding-left: 20px; }
+.ai-privacy li { margin-bottom: 3px; }
+.ai-privacy-contact { white-space: pre-line; }
+.ai-consent-check {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 14px; font-weight: 700; color: var(--ink);
+  cursor: pointer;
+  margin-bottom: 12px;
+}
+.ai-consent-check input { width: 20px; height: 20px; accent-color: var(--terra); cursor: pointer; flex-shrink: 0; }
+.ai-consent-btn {
+  width: 100%;
+  font-family: var(--jp-sans); font-weight: 800; font-size: 14px;
+  background: var(--terra); color: var(--cream);
+  border: none; border-radius: 100px;
+  padding: 12px 18px;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+.ai-consent-btn:hover:not(:disabled) { background: var(--terra-deep); }
+.ai-consent-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.ai-chat-back {
+  display: block;
+  margin: 12px auto 0;
+  background: none; border: none;
+  font-family: var(--jp-sans); font-size: 12.5px; font-weight: 700;
+  color: var(--ink-soft);
+  cursor: pointer;
+  padding: 4px 8px;
+}
+.ai-chat-back:hover { color: var(--terra-deep); text-decoration: underline; }
+@media (max-width: 540px) {
+  body { padding: 12px; }
+  .ai-chat-widget { width: 100%; height: calc(100vh - 24px); height: calc(100dvh - 24px); }
+}
+</style>
+</head>
+<body>
+
+<div class="ai-chat-widget" id="aiChatWidget">
+  <div class="ai-chat-header">
+    <div class="ai-chat-avatar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 11.5c0 4.5-4 8-9 8-1 0-2-.1-2.9-.4L4 21l1.5-3.5C3.6 16.1 3 13.9 3 11.5 3 7 7 3.5 12 3.5s9 3.5 9 8z"/>
+      </svg>
+    </div>
+    <div class="ai-chat-title-area">
+      <div class="ai-chat-title">保護ハブアシスタント</div>
+    </div>
+    <button class="ai-chat-restart" onclick="startAiChat()">最初から</button>
+  </div>
+  <div class="ai-chat-messages" id="aiChatMessages"></div>
+  <div class="ai-chat-input-area" id="aiChatInputArea"></div>
+</div>
+
+<script>
+// 回答の送信先 (22heup@gmail.com のスプレッドシートに紐づく Apps Script のウェブアプリURL)
+// 例: 'https://script.google.com/macros/s/XXXXXXXX/exec'
+const SHEET_URL = 'https://script.google.com/macros/s/AKfycbwh7PXgpYghr_KGo__8H7pTL563MiLeLDtZtrvBIq7N4WJXqVaIzAqfSqBPxYLTESxP/exec';
+
+const PREFECTURES = ['北海道','青森県','岩手県','宮城県','秋田県','山形県','福島県','茨城県','栃木県','群馬県','埼玉県','千葉県','東京都','神奈川県','新潟県','富山県','石川県','福井県','山梨県','長野県','岐阜県','静岡県','愛知県','三重県','滋賀県','京都府','大阪府','兵庫県','奈良県','和歌山県','鳥取県','島根県','岡山県','広島県','山口県','徳島県','香川県','愛媛県','高知県','福岡県','佐賀県','長崎県','熊本県','大分県','宮崎県','鹿児島県','沖縄県'];
+
+const PET_AGE_OPTIONS = ['0〜1歳（子犬・子猫）','1〜3歳','3〜5歳','5〜7歳','7〜10歳','10〜13歳','13歳以上（シニア）'];
+const ABSENCE_OPTIONS = ['なし（在宅）','4時間未満','4〜8時間','8時間以上'];
+const notEmpty = (v) => v.trim().length > 0;
+
+const Q = {
+  // 最初の質問 (元サイトでは検索前の画面で聞いていた項目)
+  petType: { key: 'petType', bot: 'まず、どちらを検討中ですか？', type: 'chips', options: ['犬','猫','どちらも'] },
+  prefecture: { key: 'prefecture', bot: 'どちらにお住まいですか？', type: 'select', placeholder: '都道府県を選択', options: PREFECTURES },
+  age: { key: 'age', bot: 'おいくつですか？', type: 'text', numeric: true, placeholder: '例：32', suffix: '歳',
+    validate: (v) => /^\d{1,3}$/.test(v), error: '年齢は数字で入力してください（例：32）。' },
+  household: { key: 'household', bot: 'どなたと暮らしていますか？', type: 'chips',
+    options: ['一人暮らし','親と同居（独身）','同棲カップル','夫婦（子供なし）','夫婦（子供あり）','シングルペアレント','ルームシェア','二世代同居','三世代同居'] },
+  // Tier 1: 基本マッチング質問
+  housing: { key: 'housing', bot: '住まいの種類は？', type: 'chips', options: ['戸建て（持ち家）','戸建て（賃貸）','分譲マンション','賃貸マンション・アパート'] },
+  permission: { key: 'permission', bot: 'ペット飼育の許可状況を教えてください。', type: 'chips', options: ['持ち家','規約で許可されている','大家さん/管理会社に相談中','許可されていない'] },
+  allergy: { key: 'allergy', bot: 'ご家族にペットアレルギーの方はいらっしゃいますか？', type: 'chips', options: ['家族全員なし','軽度のアレルギーあり','重度のアレルギーあり','未検査・分からない'] },
+  // Tier 2: 精度マッチング用の追加質問
+  experience: { key: 'experience', bot: '過去のペット飼育経験を教えてください。', type: 'chips', options: ['なし（はじめて）','あり（犬）','あり（猫）','あり（犬と猫）','あり（その他の動物）'] },
+  hasPet: { key: 'hasPet', bot: '現在、ペットを飼っていますか？', type: 'chips', options: ['はい、飼っています','いいえ、飼っていません'] },
+  petCount: { key: 'petCount', bot: '🐾 今飼っているペットは何匹ですか？', type: 'chips', options: ['1匹','2匹','3匹','4匹','5匹以上'] },
+  absenceWeekday: { key: 'absenceWeekday', bot: '日中の想定留守番時間はどのくらいですか？', type: 'chips', options: ABSENCE_OPTIONS },
+  absenceWeekend: { key: 'absenceWeekend', bot: '週末の想定留守番時間はどのくらいですか？', type: 'chips', options: ABSENCE_OPTIONS },
+  space: { key: 'space', bot: '迎える子が過ごすスペースは？', type: 'chips', options: ['室内フリー','ケージ・サークル併用','室内専用部屋','屋外'] },
+  familySize: { key: 'familySize', bot: '同居されている方は何人ですか？', type: 'text', numeric: true, placeholder: '例：2', suffix: '人',
+    validate: (v) => /^\d{1,2}$/.test(v), error: '人数は数字で入力してください（例：2）。' },
+  hasChildren: { key: 'hasChildren', bot: '小さなお子様の有無を教えてください。', type: 'chips', options: ['いない','未就学児がいる','小学生がいる','中学生以上の子がいる'] },
+  moving: { key: 'moving', bot: '今後数年以内に、引越しや転勤のご予定はありますか？', type: 'chips', options: ['予定なし','1年以内に予定あり','数年以内に可能性あり','分からない'] }
+};
+
+// 先住ペットは頭数ぶん同じ質問をくり返す (5匹以上は5匹目まで詳しく聞く)
+const MAX_PETS = 5;
+function petQuestions(n, total) {
+  const who = total > 1 ? `${n}匹目の子` : '今飼っている子';
+  const k = (name) => `pet${n}${name}`;
+  const kind = answers[k('Kind')];
+  const list = [{ key: k('Kind'), bot: `${who}について教えてください。\n種類は何ですか？`, type: 'chips', options: ['犬','猫','その他'] }];
+  if (kind === 'その他') {
+    list.push({ key: k('Other'), bot: 'どんな動物ですか？', type: 'text', placeholder: '例：うさぎ、ハムスター、フェレットなど', validate: notEmpty });
+  } else if (kind === '犬' || kind === '猫') {
+    const word = kind === '犬' ? '犬種' : '猫種';
+    list.push({ key: k('Breed'), bot: word + 'を教えてください。\n（雑種・MIX・分からない場合もそのままご記入ください）', type: 'text', placeholder: kind === '犬' ? '例：チワワ / 雑種' : '例：アメショ / 雑種', validate: notEmpty });
+  }
+  list.push(
+    { key: k('Sex'), bot: '性別を教えてください。', type: 'chips', options: ['オス','メス','分からない'] },
+    { key: k('Age'), bot: '年齢を教えてください。', type: 'chips', options: PET_AGE_OPTIONS },
+    { key: k('Neuter'), bot: '避妊・去勢手術は済んでいますか？', type: 'chips', options: ['済','未'] }
+  );
+  return list;
+}
+
+// ここまでの回答から質問の並びを組み立てる (分岐があるので毎回作り直す。戻ったときも同じ並びになる)
+function buildQuestions() {
+  const list = [Q.petType, Q.prefecture, Q.age, Q.household, Q.housing, Q.permission, Q.allergy, Q.experience, Q.hasPet];
+  // 現在飼っている → 頭数 → 頭数ぶん詳細
+  if (answers.hasPet === 'はい、飼っています') {
+    list.push(Q.petCount);
+    const total = Math.min(parseInt(answers.petCount, 10) || 0, MAX_PETS);
+    for (let n = 1; n <= total; n++) list.push(...petQuestions(n, total));
+  }
+  list.push(Q.absenceWeekday, Q.absenceWeekend, Q.space, Q.familySize, Q.hasChildren, Q.moving);
+  return list;
+}
+
+// スプレッドシートの列 (この順で送る。シートに無い列は自動で追加される)
+const SHEET_FIELDS = [
+  ['privacyAgreed', 'プライバシーポリシー'],
+  ['petType', '犬・猫'],
+  ['prefecture', '都道府県'],
+  ['age', '年齢'],
+  ['household', '家族構成'],
+  ['housing', '住まいの種類'],
+  ['permission', '飼育許可'],
+  ['allergy', 'アレルギー'],
+  ['experience', '飼育経験'],
+  ['hasPet', '現在のペット'],
+  ['petCount', '先住ペットの頭数'],
+  ...[1, 2, 3, 4, 5].flatMap(n => [
+    [`pet${n}Kind`, `先住ペット${n}：種類`],
+    [`pet${n}Other`, `先住ペット${n}：動物`],
+    [`pet${n}Breed`, `先住ペット${n}：犬種・猫種`],
+    [`pet${n}Sex`, `先住ペット${n}：性別`],
+    [`pet${n}Age`, `先住ペット${n}：年齢`],
+    [`pet${n}Neuter`, `先住ペット${n}：避妊去勢`],
+  ]),
+  ['absenceWeekday', '留守番（平日）'],
+  ['absenceWeekend', '留守番（週末）'],
+  ['space', '過ごすスペース'],
+  ['familySize', '同居人数'],
+  ['hasChildren', '小さな子供'],
+  ['moving', '引越し・転勤の予定'],
+];
+let aiChatStep = 0;
+let answers = {};
+let timers = [];
+let privacyAgreed = false;
+
+const PRIVACY_HTML = `
+  <p>株式会社Shelter Mate（以下、「当社」といいます。）は、本サービスにおけるユーザーの個人情報の取扱いについて、以下のとおりプライバシーポリシー（以下、「本ポリシー」といいます。）を定めます。</p>
+  <h4>第1条（個人情報）</h4>
+  <p>当社は、ユーザーが利用登録をする際に氏名、生年月日、住所、電話番号、メールアドレスなどの個人情報をお尋ねすることがあります。また、ユーザーと提携先などとの間でなされたユーザーの個人情報を含む取引記録や決済に関する情報を、当社の提携先などから収集することがあります。</p>
+  <h4>第2条（個人情報の収集方法）</h4>
+  <p>「個人情報」とは、個人情報保護法にいう「個人情報」を指すものとし、生存する個人に関する情報であって、当該情報に含まれる氏名、生年月日、住所、電話番号、連絡先その他の記述等により特定の個人を識別できる情報及び容貌、指紋、声紋にかかるデータ、及び健康保険証の保険者番号などの当該情報単体から特定の個人を識別できる情報（個人識別情報）を指します。</p>
+  <h4>第3条（個人情報を収集・利用する目的）</h4>
+  <p>当社が個人情報を収集・利用する目的は、以下のとおりです。</p>
+  <ol>
+    <li>当社サービスの提供・運営のため</li>
+    <li>ユーザーからのお問い合わせに回答するため（本人確認を行うことを含む）</li>
+    <li>ユーザーが利用中のサービスの新機能、更新情報、キャンペーン等及び当社が提供する他のサービスの案内のメールを送付するため</li>
+    <li>メンテナンス、重要なお知らせなど必要に応じたご連絡のため</li>
+    <li>利用規約に違反したユーザーや、不正・不当な目的でサービスを利用しようとするユーザーの特定をし、ご利用をお断りするため</li>
+    <li>ユーザーにご自身の登録情報の閲覧や変更、削除、ご利用状況の閲覧を行っていただくため</li>
+    <li>上記の利用目的に付随する目的</li>
+  </ol>
+  <h4>第4条（利用目的の変更）</h4>
+  <ol>
+    <li>当社は、利用目的が変更前と関連性を有すると合理的に認められる場合に限り、個人情報の利用目的を変更するものとします。</li>
+    <li>利用目的の変更を行った場合には、変更後の目的について、当社所定の方法により、ユーザーに通知し、または本ウェブサイト上に公表するものとします。</li>
+  </ol>
+  <h4>第5条（個人情報の第三者提供）</h4>
+  <p>当社は、次に掲げる場合を除いて、あらかじめユーザーの同意を得ることなく、第三者に個人情報を提供することはありません。ただし、個人情報保護法その他の法令で認められる場合を除きます。人の生命・身体・財産の保護に必要で本人の同意取得が困難な場合、公衆衛生の向上等に特に必要で本人の同意取得が困難な場合、国の機関等への協力が必要な場合などがこれに該当します。</p>
+  <h4>第6条（個人情報の開示）</h4>
+  <p>当社は、本人から個人情報の開示を求められたときは、本人に対し、遅滞なくこれを開示します。ただし、開示することにより本人または第三者の権利利益を害するおそれがある場合等は、その全部または一部を開示しないこともあります。なお、個人情報の開示に際しては、1件あたり1,000円の手数料を申し受けます。</p>
+  <h4>第7条（個人情報の訂正および削除）</h4>
+  <p>ユーザーは、当社の保有する自己の個人情報が誤った情報である場合には、当社が定める手続きにより、個人情報の訂正、追加または削除を請求することができます。当社は、請求に応じる必要があると判断した場合には、遅滞なく訂正等を行い、その旨をユーザーに通知します。</p>
+  <h4>第8条（個人情報の利用停止等）</h4>
+  <p>当社は、本人から、利用目的の範囲を超えて取り扱われている等の理由により利用停止または消去を求められた場合には、遅滞なく必要な調査を行い、必要と判断した場合には遅滞なく利用停止等を行い、その旨をユーザーに通知します。</p>
+  <h4>第9条（プライバシーポリシーの変更）</h4>
+  <p>本ポリシーの内容は、法令その他本ポリシーに別段の定めのある事項を除いて、ユーザーに通知することなく変更することができるものとし、変更後のプライバシーポリシーは本ウェブサイトに掲載したときから効力を生じるものとします。</p>
+  <h4>第10条（お問い合わせ窓口）</h4>
+  <p class="ai-privacy-contact">本ポリシーに関するお問い合わせは、下記の窓口までお願いいたします。
+
+社名：株式会社Shelter Mate
+Eメールアドレス：info@shelter-mate.jp</p>
+`;
+
+function later(fn, ms) { timers.push(setTimeout(fn, ms)); }
+
+function startAiChat() {
+  timers.forEach(clearTimeout);
+  timers = [];
+  aiChatStep = 0;
+  answers = {};
+  document.getElementById('aiChatMessages').innerHTML = '';
+  document.getElementById('aiChatInputArea').innerHTML = '';
+  if (privacyAgreed) return startQuestions();
+  aiChatPushBot('こんにちは！🐾 はじめに、プライバシーポリシーをご確認ください。');
+  later(aiChatShowPrivacy, 500);
+}
+
+function startQuestions() {
+  aiChatPushBot('あなたにぴったりの子を見つけるために、いくつか質問させてください。');
+  later(aiChatAskCurrent, 800);
+}
+
+// プライバシーポリシー本文をチャット内に表示し、チェック → 同意ボタンで質問開始
+function aiChatShowPrivacy() {
+  const doc = document.createElement('div');
+  doc.className = 'ai-privacy';
+  doc.innerHTML = '<div class="ai-privacy-title">プライバシーポリシー</div>' + PRIVACY_HTML;
+  document.getElementById('aiChatMessages').appendChild(doc);
+  scrollToBottom();
+
+  const area = document.getElementById('aiChatInputArea');
+  area.innerHTML = `
+    <label class="ai-consent-check">
+      <input type="checkbox" id="aiConsentCheck">
+      <span>プライバシーポリシーに同意します</span>
+    </label>
+    <button class="ai-consent-btn" id="aiConsentBtn" disabled>同意して質問に進む</button>`;
+  const check = document.getElementById('aiConsentCheck');
+  const btn = document.getElementById('aiConsentBtn');
+  check.onchange = () => { btn.disabled = !check.checked; };
+  btn.onclick = () => {
+    if (!check.checked) return;
+    privacyAgreed = true;
+    area.innerHTML = '';
+    aiChatPushUser('プライバシーポリシーに同意しました');
+    later(startQuestions, 400);
+  };
+}
+
+function scrollToBottom() {
+  const wrap = document.getElementById('aiChatMessages');
+  wrap.scrollTop = wrap.scrollHeight;
+}
+function aiChatPush(text, who) {
+  const div = document.createElement('div');
+  div.className = 'ai-msg ' + who;
+  div.textContent = text;
+  document.getElementById('aiChatMessages').appendChild(div);
+  scrollToBottom();
+}
+function aiChatPushBot(text) { aiChatPush(text, 'bot'); }
+function aiChatPushUser(text) { aiChatPush(text, 'user'); }
+function aiChatShowTyping() {
+  const div = document.createElement('div');
+  div.className = 'ai-typing';
+  div.innerHTML = '<span></span><span></span><span></span>';
+  document.getElementById('aiChatMessages').appendChild(div);
+  scrollToBottom();
+  return div;
+}
+
+// 質問ごとの「質問の吹き出し」要素。戻るときはここから下を消して聞き直す
+let questionNodes = [];
+
+function aiChatAskCurrent() {
+  if (aiChatStep >= buildQuestions().length) return aiChatFinish();
+  const typing = aiChatShowTyping();
+  later(() => {
+    typing.remove();
+    aiChatShowQuestion();
+  }, 600);
+}
+
+function aiChatShowQuestion() {
+  const q = buildQuestions()[aiChatStep];
+  aiChatPushBot(q.bot);
+  questionNodes[aiChatStep] = document.getElementById('aiChatMessages').lastElementChild;
+  aiChatRenderInput(q);
+  requestAnimationFrame(scrollToBottom);
+}
+
+// ひとつ前の質問に戻る (その質問以降のやり取りを消して聞き直す)
+function aiChatBack() {
+  if (aiChatStep <= 0) return;
+  timers.forEach(clearTimeout);
+  timers = [];
+  aiChatStep--;
+  const node = questionNodes[aiChatStep];
+  while (node && node.nextSibling) node.nextSibling.remove();
+  if (node) node.remove();
+  buildQuestions().slice(aiChatStep).forEach(q => { delete answers[q.key]; });
+  aiChatShowQuestion();
+}
+
+function aiChatBackButton() {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'ai-chat-back';
+  b.textContent = '← 前の質問に戻る';
+  b.onclick = aiChatBack;
+  return b;
+}
+
+function aiChatSetInput(...els) {
+  const area = document.getElementById('aiChatInputArea');
+  area.innerHTML = '';
+  els.forEach(el => area.appendChild(el));
+  if (aiChatStep > 0) area.appendChild(aiChatBackButton());
+}
+
+function aiChatRenderInput(q) {
+  if (q.type === 'chips') return aiChatRenderChips(q.options);
+  const row = document.createElement('form');
+  row.className = 'ai-chat-text-row';
+  let field;
+  if (q.type === 'select') {
+    field = document.createElement('select');
+    field.innerHTML = `<option value="">${q.placeholder}</option>` + q.options.map(o => `<option>${o}</option>`).join('');
+  } else {
+    field = document.createElement('input');
+    if (q.numeric) { field.inputMode = 'numeric'; field.maxLength = 3; }
+    field.placeholder = q.placeholder;
+  }
+  field.className = 'ai-chat-text-input';
+  row.appendChild(field);
+  if (q.suffix) {
+    const s = document.createElement('span');
+    s.className = 'ai-chat-suffix';
+    s.textContent = q.suffix;
+    row.appendChild(s);
+  }
+  const btn = document.createElement('button');
+  btn.className = 'ai-chat-send-btn';
+  btn.textContent = '送信';
+  row.appendChild(btn);
+  row.onsubmit = (e) => {
+    e.preventDefault();
+    const v = field.value.trim();
+    if (!v) return;
+    if (q.validate && !q.validate(v)) { aiChatPushBot(q.error); return; }
+    aiChatHandleAnswer(v, q.suffix ? v + q.suffix : v);
+  };
+  aiChatSetInput(row);
+  setTimeout(() => field.focus(), 50);
+}
+
+function aiChatRenderChips(options) {
+  const row = document.createElement('div');
+  row.className = 'ai-chat-chips';
+  options.forEach(o => {
+    const b = document.createElement('button');
+    b.className = 'ai-chat-chip';
+    b.textContent = o;
+    b.onclick = () => aiChatHandleAnswer(o);
+    row.appendChild(b);
+  });
+  aiChatSetInput(row);
+}
+
+function aiChatHandleAnswer(value, label) {
+  const q = buildQuestions()[aiChatStep];
+  answers[q.key] = value;
+  aiChatPushUser(label || value);
+  document.getElementById('aiChatInputArea').innerHTML = '';
+  aiChatStep++;
+  later(aiChatAskCurrent, 400);
+}
+
+// 全問回答後: 「フォームを送信」ボタンを出す
+function aiChatFinish() {
+  const typing = aiChatShowTyping();
+  later(() => {
+    typing.remove();
+    aiChatPushBot('質問は以上です！\n内容に間違いがなければ「フォームを送信」を押してください。');
+    const btn = document.createElement('button');
+    btn.className = 'ai-consent-btn';
+    btn.textContent = 'フォームを送信';
+    btn.onclick = () => aiChatSubmit(btn);
+    aiChatSetInput(btn);
+    scrollToBottom();
+  }, 800);
+}
+
+async function aiChatSubmit(btn) {
+  if (!SHEET_URL) {
+    aiChatPushBot('送信先が設定されていません。（SHEET_URL を設定してください）');
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = '送信中…';
+  const values = { ...answers, privacyAgreed: privacyAgreed ? '同意' : '' };
+  const fields = SHEET_FIELDS.map(([key, label]) => {
+    const q = buildQuestions().find(x => x.key === key);
+    const v = values[key] || '';
+    return [label, v && q && q.suffix ? v + q.suffix : v];
+  });
+  const payload = { ...values, fields };
+  try {
+    // Apps Script はCORSヘッダーを返さないので no-cors で送る (応答は読めないが、書き込みは行われる)
+    await fetch(SHEET_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    });
+    document.getElementById('aiChatInputArea').innerHTML = '';
+    aiChatPushBot('送信が完了しました！ありがとうございます✨\n担当者より改めてご連絡いたします。');
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = 'フォームを送信';
+    aiChatPushBot('送信に失敗しました。通信環境をご確認のうえ、もう一度お試しください。');
+  }
+  scrollToBottom();
+}
+
+startAiChat();
+</script>
+</body>
+</html>
