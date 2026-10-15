@@ -305,7 +305,10 @@ const Q = {
   familySize: { key: 'familySize', bot: '同居されている方は何人ですか？', type: 'text', numeric: true, placeholder: '例：2', suffix: '人',
     validate: (v) => /^\d{1,2}$/.test(v), error: '人数は数字で入力してください（例：2）。' },
   hasChildren: { key: 'hasChildren', bot: '小さなお子様の有無を教えてください。', type: 'chips', options: ['いない','未就学児がいる','小学生がいる','中学生以上の子がいる'] },
-  moving: { key: 'moving', bot: '今後数年以内に、引越しや転勤のご予定はありますか？', type: 'chips', options: ['予定なし','1年以内に予定あり','数年以内に可能性あり','分からない'] }
+  moving: { key: 'moving', bot: '今後数年以内に、引越しや転勤のご予定はありますか？', type: 'chips', options: ['予定なし','1年以内に予定あり','数年以内に可能性あり','分からない'] },
+  // 最後の質問: 認知経路
+  source: { key: 'source', bot: '最後に、保護ハブをどこで知りましたか？', type: 'chips', options: ['Instagram','Threads','ポッドキャスト','note','検索','その他'] },
+  sourceOther: { key: 'sourceOther', bot: 'どこで知ったか、よろしければ教えてください。', type: 'text', placeholder: '例：友人の紹介、譲渡会 など', validate: notEmpty }
 };
 
 // 先住ペットは頭数ぶん同じ質問をくり返す (5匹以上は5匹目まで詳しく聞く)
@@ -338,7 +341,8 @@ function buildQuestions() {
     const total = Math.min(parseInt(answers.petCount, 10) || 0, MAX_PETS);
     for (let n = 1; n <= total; n++) list.push(...petQuestions(n, total));
   }
-  list.push(Q.absenceWeekday, Q.absenceWeekend, Q.space, Q.familySize, Q.hasChildren, Q.moving);
+  list.push(Q.absenceWeekday, Q.absenceWeekend, Q.space, Q.familySize, Q.hasChildren, Q.moving, Q.source);
+  if (answers.source === 'その他') list.push(Q.sourceOther);
   return list;
 }
 
@@ -369,6 +373,8 @@ const SHEET_FIELDS = [
   ['familySize', '同居人数'],
   ['hasChildren', '小さな子供'],
   ['moving', '引越し・転勤の予定'],
+  ['source', '保護ハブを知った場所'],
+  ['sourceOther', '知った場所（その他）'],
 ];
 let aiChatStep = 0;
 let answers = {};
