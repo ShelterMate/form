@@ -656,7 +656,7 @@ async function aiChatSubmit(btn) {
       body: JSON.stringify(payload)
     });
     document.getElementById('aiChatInputArea').innerHTML = '';
-    aiChatPushBot('送信が完了しました！ありがとうございます✨\nご入力いただいたメールアドレスへ、担当者より改めてご連絡いたします。');
+    aiChatPushBot('送信が完了しました！ありがとうございます。\nご入力いただいたメールアドレスへ、担当者より改めてご連絡いたします。');
   } catch (e) {
     btn.disabled = false;
     btn.textContent = 'フォームを送信';
