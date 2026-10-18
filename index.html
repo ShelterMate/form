@@ -307,8 +307,12 @@ const Q = {
   hasChildren: { key: 'hasChildren', bot: '小さなお子様の有無を教えてください。', type: 'chips', options: ['いない','未就学児がいる','小学生がいる','中学生以上の子がいる'] },
   moving: { key: 'moving', bot: '今後数年以内に、引越しや転勤のご予定はありますか？', type: 'chips', options: ['予定なし','1年以内に予定あり','数年以内に可能性あり','分からない'] },
   // 最後の質問: 認知経路
-  source: { key: 'source', bot: '最後に、保護ハブをどこで知りましたか？', type: 'chips', options: ['Instagram','Threads','ポッドキャスト','note','検索','その他'] },
-  sourceOther: { key: 'sourceOther', bot: 'どこで知ったか、よろしければ教えてください。', type: 'text', placeholder: '例：友人の紹介、譲渡会 など', validate: notEmpty }
+  source: { key: 'source', bot: '保護ハブをどこで知りましたか？', type: 'chips', options: ['Instagram','Threads','ポッドキャスト','note','検索','その他'] },
+  sourceOther: { key: 'sourceOther', bot: 'どこで知ったか、よろしければ教えてください。', type: 'text', placeholder: '例：友人の紹介、譲渡会 など', validate: notEmpty },
+  // 最後: 担当者から連絡するための連絡先
+  name: { key: 'name', bot: '最後に、ご連絡先を教えてください。\nまず、お名前を入力してください。', type: 'text', placeholder: '例：山田 花子', autocomplete: 'name', validate: notEmpty },
+  email: { key: 'email', bot: 'メールアドレスを入力してください。\n（担当者からのご連絡に使います）', type: 'text', inputType: 'email', autocomplete: 'email', placeholder: '例：hanako@example.com',
+    validate: (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), error: 'メールアドレスの形式が正しくないようです。もう一度ご確認ください。' }
 };
 
 // 先住ペットは頭数ぶん同じ質問をくり返す (5匹以上は5匹目まで詳しく聞く)
@@ -343,6 +347,7 @@ function buildQuestions() {
   }
   list.push(Q.absenceWeekday, Q.absenceWeekend, Q.space, Q.familySize, Q.hasChildren, Q.moving, Q.source);
   if (answers.source === 'その他') list.push(Q.sourceOther);
+  list.push(Q.name, Q.email);
   return list;
 }
 
@@ -375,6 +380,8 @@ const SHEET_FIELDS = [
   ['moving', '引越し・転勤の予定'],
   ['source', '保護ハブを知った場所'],
   ['sourceOther', '知った場所（その他）'],
+  ['name', 'お名前'],
+  ['email', 'メールアドレス'],
 ];
 let aiChatStep = 0;
 let answers = {};
@@ -384,12 +391,13 @@ let privacyAgreed = false;
 const PRIVACY_HTML = `
   <p>株式会社Shelter Mate（以下、「当社」といいます。）は、保護ハブアシスタント（以下、「本フォーム」といいます。）でお預かりする情報の取扱いについて、以下のとおりプライバシーポリシー（以下、「本ポリシー」といいます。）を定めます。</p>
   <h4>第1条（取得する情報）</h4>
-  <p>当社は、本フォームにおいて、以下の情報をお尋ねします。なお、本フォームではお名前・メールアドレス・電話番号などの連絡先はお尋ねしません。</p>
+  <p>当社は、本フォームにおいて、以下の情報をお尋ねします。</p>
   <ol>
     <li>迎えたい動物の種類、お住まいの都道府県、年齢、家族構成、同居人数、小さなお子様の有無</li>
     <li>住まいの種類、ペット飼育の許可状況、ご家族のペットアレルギーの有無</li>
     <li>過去のペット飼育経験、現在飼っているペットの情報（頭数・種類・犬種/猫種・性別・年齢・避妊去勢の状況）</li>
     <li>留守番時間、迎える子が過ごすスペース、今後の引越し・転勤の予定</li>
+    <li>お名前、メールアドレス</li>
     <li>回答の送信日時、本ポリシーへの同意の有無</li>
   </ol>
   <h4>第2条（個人情報の定義）</h4>
@@ -399,6 +407,7 @@ const PRIVACY_HTML = `
   <ol>
     <li>当社サービスの提供・運営のため</li>
     <li>回答内容をもとに、ご希望や生活環境に合う保護動物・保護団体をご紹介（マッチング）するため</li>
+    <li>ご入力いただいたメールアドレスへ、マッチング結果のご案内やご相談への回答などのご連絡をするため</li>
     <li>当社と提携する保護団体が、譲渡の検討・審査を行うため</li>
     <li>利用規約に違反したユーザーや、不正・不当な目的でサービスを利用しようとするユーザーの特定をし、ご利用をお断りするため</li>
     <li>ユーザーにご自身の情報の閲覧や変更、削除を行っていただくため</li>
@@ -560,6 +569,8 @@ function aiChatRenderInput(q) {
   } else {
     field = document.createElement('input');
     if (q.numeric) { field.inputMode = 'numeric'; field.maxLength = 3; }
+    if (q.inputType) field.type = q.inputType;
+    if (q.autocomplete) field.autocomplete = q.autocomplete;
     field.placeholder = q.placeholder;
   }
   field.className = 'ai-chat-text-input';
@@ -645,7 +656,7 @@ async function aiChatSubmit(btn) {
       body: JSON.stringify(payload)
     });
     document.getElementById('aiChatInputArea').innerHTML = '';
-    aiChatPushBot('送信が完了しました！ありがとうございます✨\n担当者より改めてご連絡いたします。');
+    aiChatPushBot('送信が完了しました！ありがとうございます✨\nご入力いただいたメールアドレスへ、担当者より改めてご連絡いたします。');
   } catch (e) {
     btn.disabled = false;
     btn.textContent = 'フォームを送信';
