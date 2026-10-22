@@ -199,6 +199,24 @@ body {
   transition: background 0.15s;
 }
 .ai-chat-send-btn:hover { background: var(--terra-deep); }
+/* 同居家族: 人数ぶんの行をまとめて表示 */
+.ai-chat-input-area:has(.ai-members) { max-height: 360px; }
+.ai-members { display: flex; flex-direction: column; gap: 10px; }
+.ai-member-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ai-member-who { flex: 0 0 64px; font-size: 13px; font-weight: 700; color: var(--ink); }
+.ai-member-row select, .ai-member-row input {
+  flex: 1 1 120px; min-width: 0;
+  font-family: var(--jp-sans); font-size: 16px; color: var(--ink);
+  padding: 8px 10px; border: 1.5px solid var(--line); border-radius: 12px;
+  background: var(--cream); outline: none;
+}
+.ai-member-row select:focus, .ai-member-row input:focus { border-color: var(--terra); }
+.ai-member-row input { flex-basis: 100%; margin-left: 72px; }
+.ai-members .ai-chat-send-btn { align-self: flex-end; padding: 11px 26px; }
+@media (max-width: 540px) {
+  .ai-member-who { flex-basis: 100%; }
+  .ai-member-row input { margin-left: 0; }
+}
 /* プライバシーポリシー (チャット内の文書カード) */
 .ai-privacy {
   align-self: stretch;
@@ -291,7 +309,10 @@ const Q = {
   age: { key: 'age', bot: 'おいくつですか？', type: 'text', numeric: true, placeholder: '例：32', suffix: '歳',
     validate: (v) => /^\d{1,3}$/.test(v), error: '年齢は数字で入力してください（例：32）。' },
   household: { key: 'household', bot: 'どなたと暮らしていますか？', type: 'chips',
-    options: ['一人暮らし','親と同居（独身）','同棲カップル','夫婦（子供なし）','夫婦（子供あり）','シングルペアレント','ルームシェア','二世代同居','三世代同居'] },
+    options: ['一人暮らし','親と同居（独身）','同棲カップル','夫婦（子供なし）','夫婦（子供あり）','シングルペアレント','ルームシェア','三世代同居','その他'] },
+  householdOther: { key: 'householdOther', bot: 'どなたと暮らしているか、教えてください。', type: 'text', placeholder: '例：兄弟と2人暮らし', validate: notEmpty },
+  familySize: { key: 'familySize', bot: 'ご自身を含めて、何人で暮らしていますか？', type: 'chips', options: ['2人','3人','4人','5人','6人以上'] },
+  members: { key: 'members', bot: '一緒に暮らしている方について教えてください。\nご関係と年齢をそれぞれ選んでください。', type: 'members' },
   // Tier 1: 基本マッチング質問
   housing: { key: 'housing', bot: '住まいの種類は？', type: 'chips', options: ['戸建て（持ち家）','戸建て（賃貸）','分譲マンション','賃貸マンション・アパート'] },
   permission: { key: 'permission', bot: 'ペット飼育の許可状況を教えてください。', type: 'chips', options: ['持ち家','規約で許可されている','大家さん/管理会社に相談中','許可されていない'] },
@@ -303,9 +324,6 @@ const Q = {
   absenceWeekday: { key: 'absenceWeekday', bot: '日中の想定留守番時間はどのくらいですか？', type: 'chips', options: ABSENCE_OPTIONS },
   absenceWeekend: { key: 'absenceWeekend', bot: '週末の想定留守番時間はどのくらいですか？', type: 'chips', options: ABSENCE_OPTIONS },
   space: { key: 'space', bot: '迎える子が過ごすスペースは？', type: 'chips', options: ['室内フリー','ケージ・サークル併用','室内専用部屋','屋外'] },
-  familySize: { key: 'familySize', bot: '同居されている方は何人ですか？', type: 'text', numeric: true, placeholder: '例：2', suffix: '人',
-    validate: (v) => /^\d{1,2}$/.test(v), error: '人数は数字で入力してください（例：2）。' },
-  hasChildren: { key: 'hasChildren', bot: '小さなお子様の有無を教えてください。', type: 'chips', options: ['いない','未就学児がいる','小学生がいる','中学生以上の子がいる'] },
   moving: { key: 'moving', bot: '今後数年以内に、引越しや転勤のご予定はありますか？', type: 'chips', options: ['予定なし','1年以内に予定あり','数年以内に可能性あり','分からない'] },
   // 最後の質問: 認知経路
   source: { key: 'source', bot: '保護ハブをどこで知りましたか？', type: 'chips', options: ['Instagram','Threads','ポッドキャスト','note','検索','その他'] },
@@ -315,6 +333,32 @@ const Q = {
   email: { key: 'email', bot: 'メールアドレスを入力してください。\n（担当者からのご連絡に使います）', type: 'text', inputType: 'email', autocomplete: 'email', placeholder: '例：hanako@example.com',
     validate: (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), error: 'メールアドレスの形式が正しくないようです。もう一度ご確認ください。' }
 };
+
+// 同居家族: 人数を聞いたあと、ご自身＋一緒に暮らす方を1画面にまとめて聞く (6人以上は5人目まで)
+const MAX_MEMBERS = 5;
+const MEMBER_RELATIONS = ['配偶者・パートナー','子供','親','祖父母','兄弟姉妹','友人・ルームメイト','その他'];
+const MEMBER_AGES = ['0〜5歳（未就学）','6〜12歳（小学生）','13〜17歳','18〜29歳','30代','40代','50代','60代','70歳以上'];
+function memberCount() { return Math.min((parseInt(answers.familySize, 10) || 1) - 1, MAX_MEMBERS); }
+function ageBandOf(age) {
+  const a = parseInt(age, 10);
+  if (isNaN(a)) return '';
+  if (a < 6) return MEMBER_AGES[0];
+  if (a < 13) return MEMBER_AGES[1];
+  if (a < 18) return MEMBER_AGES[2];
+  if (a < 30) return MEMBER_AGES[3];
+  if (a >= 70) return MEMBER_AGES[8];
+  return MEMBER_AGES[Math.floor(a / 10) + 1];
+}
+// 以前の「小さなお子様の有無」の列は、家族の年齢から自動で埋める
+function childrenFromMembers() {
+  if (answers.household === '一人暮らし') return 'いない';
+  const ages = [];
+  for (let n = 1; n <= memberCount(); n++) ages.push(answers[`member${n}Age`]);
+  if (ages.includes(MEMBER_AGES[0])) return '未就学児がいる';
+  if (ages.includes(MEMBER_AGES[1])) return '小学生がいる';
+  if (ages.includes(MEMBER_AGES[2])) return '中学生以上の子がいる';
+  return 'いない';
+}
 
 // 先住ペットは頭数ぶん同じ質問をくり返す (5匹以上は5匹目まで詳しく聞く)
 const MAX_PETS = 5;
@@ -339,14 +383,17 @@ function petQuestions(n, total) {
 
 // ここまでの回答から質問の並びを組み立てる (分岐があるので毎回作り直す。戻ったときも同じ並びになる)
 function buildQuestions() {
-  const list = [Q.petType, Q.prefecture, Q.age, Q.household, Q.housing, Q.permission, Q.allergy, Q.experience, Q.hasPet];
+  const list = [Q.petType, Q.prefecture, Q.age, Q.household];
+  if (answers.household === 'その他') list.push(Q.householdOther);
+  if (answers.household && answers.household !== '一人暮らし') list.push(Q.familySize, Q.members);
+  list.push(Q.housing, Q.permission, Q.allergy, Q.experience, Q.hasPet);
   // 現在飼っている → 頭数 → 頭数ぶん詳細
   if (answers.hasPet === 'はい、飼っています') {
     list.push(Q.petCount);
     const total = Math.min(parseInt(answers.petCount, 10) || 0, MAX_PETS);
     for (let n = 1; n <= total; n++) list.push(...petQuestions(n, total));
   }
-  list.push(Q.absenceWeekday, Q.absenceWeekend, Q.space, Q.familySize, Q.hasChildren, Q.moving, Q.source);
+  list.push(Q.absenceWeekday, Q.absenceWeekend, Q.space, Q.moving, Q.source);
   if (answers.source === 'その他') list.push(Q.sourceOther);
   list.push(Q.name, Q.email);
   return list;
@@ -359,6 +406,13 @@ const SHEET_FIELDS = [
   ['prefecture', '都道府県'],
   ['age', '年齢'],
   ['household', '家族構成'],
+  ['householdOther', '家族構成（その他）'],
+  ['selfAgeBand', '同居家族：ご自身の年代'],
+  ...[1, 2, 3, 4, 5].flatMap(n => [
+    [`member${n}Rel`, `同居家族${n}：関係`],
+    [`member${n}RelOther`, `同居家族${n}：関係（その他）`],
+    [`member${n}Age`, `同居家族${n}：年代`],
+  ]),
   ['housing', '住まいの種類'],
   ['permission', '飼育許可'],
   ['allergy', 'アレルギー'],
@@ -394,7 +448,7 @@ const PRIVACY_HTML = `
   <h4>第1条（取得する情報）</h4>
   <p>当社は、本フォームにおいて、以下の情報をお尋ねします。</p>
   <ol>
-    <li>迎えたい動物の種類、お住まいの都道府県、年齢、家族構成、同居人数、小さなお子様の有無</li>
+    <li>迎えたい動物の種類、お住まいの都道府県、年齢、家族構成、同居人数、同居されている方のご関係・年代</li>
     <li>住まいの種類、ペット飼育の許可状況、ご家族のペットアレルギーの有無</li>
     <li>過去のペット飼育経験、現在飼っているペットの情報（頭数・種類・犬種/猫種・性別・年齢・避妊去勢の状況）</li>
     <li>留守番時間、迎える子が過ごすスペース、今後の引越し・転勤の予定</li>
@@ -539,7 +593,10 @@ function aiChatBack() {
   const node = questionNodes[aiChatStep];
   while (node && node.nextSibling) node.nextSibling.remove();
   if (node) node.remove();
-  buildQuestions().slice(aiChatStep).forEach(q => { delete answers[q.key]; });
+  buildQuestions().slice(aiChatStep).forEach(q => {
+    delete answers[q.key];
+    if (q.type === 'members') Object.keys(answers).filter(k => /^(member\d|selfAgeBand)/.test(k)).forEach(k => delete answers[k]);
+  });
   aiChatShowQuestion();
 }
 
@@ -561,6 +618,7 @@ function aiChatSetInput(...els) {
 
 function aiChatRenderInput(q) {
   if (q.type === 'chips') return aiChatRenderChips(q.options);
+  if (q.type === 'members') return aiChatRenderMembers();
   const row = document.createElement('form');
   row.className = 'ai-chat-text-row';
   let field;
@@ -595,6 +653,59 @@ function aiChatRenderInput(q) {
   };
   aiChatSetInput(row);
   setTimeout(() => field.focus(), 50);
+}
+
+function aiChatRenderMembers() {
+  const form = document.createElement('form');
+  form.className = 'ai-members';
+  const sel = (ph, opts, val) => {
+    const el = document.createElement('select');
+    el.innerHTML = `<option value="">${ph}</option>` + opts.map(o => `<option${o === val ? ' selected' : ''}>${o}</option>`).join('');
+    return el;
+  };
+  const row = (who, ...els) => {
+    const r = document.createElement('div');
+    r.className = 'ai-member-row';
+    const w = document.createElement('span');
+    w.className = 'ai-member-who';
+    w.textContent = who;
+    r.append(w, ...els);
+    form.appendChild(r);
+  };
+  const selfAge = sel('年齢', MEMBER_AGES, ageBandOf(answers.age));
+  row('ご自身', selfAge);
+  const rows = [];
+  for (let n = 1; n <= memberCount(); n++) {
+    const rel = sel('ご関係', MEMBER_RELATIONS);
+    const age = sel('年齢', MEMBER_AGES);
+    const other = document.createElement('input');
+    other.placeholder = 'ご関係を入力（例：いとこ）';
+    other.style.display = 'none';
+    rel.onchange = () => { other.style.display = rel.value === 'その他' ? '' : 'none'; };
+    row(`${n}人目`, rel, age, other);
+    rows.push({ rel, age, other });
+  }
+  const btn = document.createElement('button');
+  btn.className = 'ai-chat-send-btn';
+  btn.textContent = '送信';
+  form.appendChild(btn);
+  form.onsubmit = (e) => {
+    e.preventDefault();
+    const missing = !selfAge.value || rows.some(r => !r.rel.value || !r.age.value || (r.rel.value === 'その他' && !r.other.value.trim()));
+    if (missing) { aiChatPushBot('すべての方のご関係と年齢を選んでください。'); return; }
+    answers.selfAgeBand = selfAge.value;
+    const parts = [`ご自身（${selfAge.value}）`];
+    rows.forEach((r, i) => {
+      const n = i + 1;
+      const relText = r.rel.value === 'その他' ? r.other.value.trim() : r.rel.value;
+      answers[`member${n}Rel`] = r.rel.value;
+      answers[`member${n}Age`] = r.age.value;
+      if (r.rel.value === 'その他') answers[`member${n}RelOther`] = relText;
+      parts.push(`${relText}（${r.age.value}）`);
+    });
+    aiChatHandleAnswer(parts.join('／'));
+  };
+  aiChatSetInput(form);
 }
 
 function aiChatRenderChips(options) {
@@ -641,7 +752,8 @@ async function aiChatSubmit(btn) {
   }
   btn.disabled = true;
   btn.textContent = '送信中…';
-  const values = { ...answers, privacyAgreed: privacyAgreed ? '同意' : '' };
+  const values = { ...answers, privacyAgreed: privacyAgreed ? '同意' : '', hasChildren: childrenFromMembers() };
+  if (answers.household === '一人暮らし') values.familySize = '1人';
   const fields = SHEET_FIELDS.map(([key, label]) => {
     const q = buildQuestions().find(x => x.key === key);
     const v = values[key] || '';
