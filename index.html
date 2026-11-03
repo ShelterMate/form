@@ -541,7 +541,7 @@ function startAiChat() {
   document.getElementById('aiChatMessages').innerHTML = '';
   document.getElementById('aiChatInputArea').innerHTML = '';
   if (privacyAgreed) return startQuestions();
-  aiChatPushBot('こんにちは！🐾 はじめに、プライバシーポリシーをご確認ください。');
+  aiChatPushBot('こんにちは！はじめに、プライバシーポリシーをご確認ください。');
   later(aiChatShowPrivacy, 500);
 }
 
