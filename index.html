@@ -311,8 +311,9 @@ const Q = {
   familySize: { key: 'familySize', bot: 'あなたを含めて、ペットと一緒に暮らすのは何人ですか？', type: 'chips', options: ['1人（一人暮らし）','2人','3人','4人','5人','6人以上'] },
   members: { key: 'members', bot: '一緒に暮らす方について教えてください。\nご関係と年齢をそれぞれ選んでください。', type: 'members' },
   // Tier 1: 基本マッチング質問
-  housing: { key: 'housing', bot: '住まいの種類は？', type: 'chips', options: ['戸建て（持ち家）','戸建て（賃貸）','分譲マンション','賃貸マンション・アパート'] },
-  permission: { key: 'permission', bot: 'ペット飼育の許可状況を教えてください。', type: 'chips', options: ['持ち家','規約で許可されている','大家さん/管理会社に相談中','許可されていない'] },
+  housing: { key: 'housing', bot: '住まいの種類は？', type: 'chips', options: ['戸建て（持ち家）','戸建て（賃貸）','分譲マンション','賃貸マンション・アパート','社宅・寮','その他'] },
+  permission: { key: 'permission', bot: 'ペットを飼ってよい住まいですか？', type: 'chips', options: ['規約・契約で許可されている','大家さん・管理会社に相談中','許可されていない','分からない'],
+    replies: { '許可されていない': 'ペット可のお住まいでないと、譲渡が難しい場合があります。\nこのまま回答を続けていただいて大丈夫です。' } },
   allergy: { key: 'allergy', bot: 'ご家族にペットアレルギーの方はいらっしゃいますか？', type: 'chips', options: ['家族全員なし','軽度のアレルギーあり','重度のアレルギーあり','未検査・分からない'] },
   // Tier 2: 精度マッチング用の追加質問
   experience: { key: 'experience', bot: '過去のペット飼育経験を教えてください。', type: 'chips', options: ['なし（はじめて）','あり（犬）','あり（猫）','あり（犬と猫）','あり（その他の動物）'] },
@@ -391,7 +392,10 @@ function petQuestions(n, total) {
 function buildQuestions() {
   const list = [Q.petType, Q.prefecture, Q.age, Q.familySize];
   if (answers.familySize && memberCount() > 0) list.push(Q.members);
-  list.push(Q.housing, Q.permission, Q.allergy, Q.experience, Q.hasPet);
+  list.push(Q.housing);
+  // 戸建ての持ち家は飼育許可を聞かない (シートには「持ち家」と入れる)
+  if (answers.housing !== '戸建て（持ち家）') list.push(Q.permission);
+  list.push(Q.allergy, Q.experience, Q.hasPet);
   // 現在飼っている → 頭数 → 頭数ぶん詳細
   if (answers.hasPet === 'はい、飼っています') {
     list.push(Q.petCount);
@@ -729,7 +733,9 @@ function aiChatHandleAnswer(value, label) {
   aiChatPushUser(label || value);
   document.getElementById('aiChatInputArea').innerHTML = '';
   aiChatStep++;
-  later(aiChatAskCurrent, 400);
+  const reply = q.replies && q.replies[value];
+  if (reply) later(() => aiChatPushBot(reply), 400);
+  later(aiChatAskCurrent, reply ? 1200 : 400);
 }
 
 // 全問回答後: 「フォームを送信」ボタンを出す
@@ -757,6 +763,7 @@ async function aiChatSubmit(btn) {
   const values = { ...answers, privacyAgreed: privacyAgreed ? '同意' : '', hasChildren: childrenFromMembers(),
     household: householdFromMembers(), selfAgeBand: ageBandOf(answers.age) };
   if (memberCount() === 0) values.familySize = '1人';
+  if (answers.housing === '戸建て（持ち家）') values.permission = '持ち家';
   const fields = SHEET_FIELDS.map(([key, label]) => {
     const q = buildQuestions().find(x => x.key === key);
     const v = values[key] || '';
