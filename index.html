@@ -100,6 +100,19 @@ body {
   animation: aiMsgIn 0.25s ease;
   box-shadow: 0 1px 3px rgba(43, 24, 16, 0.06);
 }
+/* 送信前の回答まとめ: 項目ごとに「変更」ボタン */
+.ai-msg.ai-summary { max-width: 92%; white-space: normal; }
+.ai-summary-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.ai-summary-row + .ai-summary-row { margin-top: 6px; }
+.ai-summary-edit {
+  flex-shrink: 0;
+  font-family: var(--jp-sans); font-size: 11.5px; font-weight: 800;
+  background: none; color: var(--terra-deep);
+  border: 1.5px solid var(--terra); border-radius: 100px;
+  padding: 2px 10px; margin-top: 2px;
+  cursor: pointer;
+}
+.ai-summary-edit:hover { background: var(--terra-soft); }
 @keyframes aiMsgIn {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
@@ -524,6 +537,7 @@ function startAiChat() {
   timers = [];
   aiChatStep = 0;
   answers = {};
+  editKeys = null;
   document.getElementById('aiChatMessages').innerHTML = '';
   document.getElementById('aiChatInputArea').innerHTML = '';
   if (privacyAgreed) return startQuestions();
@@ -587,9 +601,20 @@ function aiChatShowTyping() {
 
 // 質問ごとの「質問の吹き出し」要素。戻るときはここから下を消して聞き直す
 let questionNodes = [];
+// まとめから「変更」したとき: 聞き直す質問のキー。変更中は答え済みの質問を飛ばし、変更する項目と新しく必要になった質問だけ聞く
+let editKeys = null;
+let editChanged = false;
 
 function aiChatAskCurrent() {
-  if (aiChatStep >= buildQuestions().length) return aiChatFinish();
+  if (editKeys) {
+    const list = buildQuestions();
+    while (aiChatStep < list.length && list[aiChatStep].key in answers && !editKeys.includes(list[aiChatStep].key)) aiChatStep++;
+  }
+  if (aiChatStep >= buildQuestions().length) {
+    const edited = !!editKeys;
+    editKeys = null;
+    return aiChatFinish(edited);
+  }
   const typing = aiChatShowTyping();
   later(() => {
     typing.remove();
@@ -635,11 +660,63 @@ function aiChatSetInput(...els) {
   const area = document.getElementById('aiChatInputArea');
   area.innerHTML = '';
   els.forEach(el => area.appendChild(el));
-  if (aiChatStep > 0) area.appendChild(aiChatBackButton());
+  if (editKeys) {
+    if (!editChanged) area.appendChild(aiChatCancelEditButton());
+  } else if (aiChatStep > 0 && aiChatStep < buildQuestions().length) {
+    area.appendChild(aiChatBackButton());
+  }
+}
+
+// まとめの「変更」: その項目の質問だけ聞き直し、終わったらまとめに戻る
+function aiChatEdit(label, keys) {
+  timers.forEach(clearTimeout);
+  timers = [];
+  document.querySelectorAll('.ai-summary-edit').forEach(b => b.remove());
+  editKeys = keys;
+  editChanged = false;
+  aiChatStep = buildQuestions().findIndex(q => keys.includes(q.key));
+  document.getElementById('aiChatInputArea').innerHTML = '';
+  aiChatPushUser(`「${label}」を変更します`);
+  later(aiChatAskCurrent, 400);
+}
+
+function aiChatCancelEditButton() {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'ai-chat-back';
+  b.textContent = '← 変更せずにまとめに戻る';
+  b.onclick = () => {
+    timers.forEach(clearTimeout);
+    timers = [];
+    editKeys = null;
+    document.getElementById('aiChatInputArea').innerHTML = '';
+    aiChatFinish(true);
+  };
+  return b;
+}
+
+// 回答を変えたら、その答えに合わせて聞いていた質問の回答を消して聞き直す
+function clearDependents(q) {
+  if (q.key === 'familySize') delete answers.members; // 入力済みの方は残したまま、人数に合わせて聞き直す
+  const m = q.key.match(/^pet(\d)Kind$/);
+  if (m) ['Other', 'Breed'].forEach(f => delete answers[`pet${m[1]}${f}`]);
+}
+
+// 変更で使わなくなった回答を消す (例: 持ち家に変えたら飼育許可、ペットを飼っていないに変えたら先住ペット)
+function pruneAnswers() {
+  const keys = buildQuestions().map(q => q.key);
+  Object.keys(answers).forEach(k => {
+    const member = k.match(/^member(\d)/);
+    const pet = k.match(/^pet(\d)(Sex|Age|Neuter)$/);
+    const used = keys.includes(k)
+      || (member && keys.includes('members') && member[1] <= memberCount())
+      || (pet && keys.includes(`pet${pet[1]}Detail`));
+    if (!used) delete answers[k];
+  });
 }
 
 function aiChatRenderInput(q) {
-  if (q.type === 'chips') return aiChatRenderChips(q.options);
+  if (q.type === 'chips') return aiChatRenderChips(q);
   if (q.type === 'multi') return aiChatRenderMulti(q);
   if (q.type === 'members') return aiChatRenderMembers();
   if (q.type === 'petDetail') return aiChatRenderPetDetail(q.pet);
@@ -657,6 +734,7 @@ function aiChatRenderInput(q) {
     field.placeholder = q.placeholder;
   }
   field.className = 'ai-chat-text-input';
+  field.value = answers[q.key] || '';
   row.appendChild(field);
   if (q.suffix) {
     const s = document.createElement('span');
@@ -705,18 +783,20 @@ function aiChatRenderMembers() {
   row('1人目', fixed('ご自身'), fixed(`${answers.age}歳`));
   const rows = [];
   for (let n = 1; n <= memberCount(); n++) {
-    const rel = sel('ご関係', MEMBER_RELATIONS);
+    const rel = sel('ご関係', MEMBER_RELATIONS, answers[`member${n}Rel`]);
     const ageWrap = document.createElement('label');
     ageWrap.className = 'ai-member-age';
     const age = document.createElement('input');
     age.inputMode = 'numeric';
     age.maxLength = 3;
     age.placeholder = '年齢';
+    age.value = parseInt(answers[`member${n}Age`], 10) >= 0 ? parseInt(answers[`member${n}Age`], 10) : '';
     ageWrap.append(age, '歳');
     const other = document.createElement('input');
     other.className = 'ai-member-other';
     other.placeholder = 'ご関係を入力（例：いとこ）';
-    other.style.display = 'none';
+    other.value = answers[`member${n}RelOther`] || '';
+    other.style.display = rel.value === 'その他' ? '' : 'none';
     rel.onchange = () => { other.style.display = rel.value === 'その他' ? '' : 'none'; };
     row(`${n + 1}人目`, rel, ageWrap, other);
     rows.push({ rel, age, other });
@@ -739,6 +819,7 @@ function aiChatRenderMembers() {
       answers[`member${n}Rel`] = r.rel.value;
       answers[`member${n}Age`] = ageText;
       if (r.rel.value === 'その他') answers[`member${n}RelOther`] = relText;
+      else delete answers[`member${n}RelOther`];
       parts.push(`${relText}（${ageText}）`);
     });
     aiChatHandleAnswer(parts.join('／'));
@@ -750,9 +831,9 @@ function aiChatRenderMembers() {
 function aiChatRenderPetDetail(n) {
   const form = document.createElement('form');
   form.className = 'ai-members';
-  const sel = (ph, opts) => {
+  const sel = (ph, opts, val) => {
     const el = document.createElement('select');
-    el.innerHTML = `<option value="">${ph}</option>` + opts.map(o => `<option>${o}</option>`).join('');
+    el.innerHTML = `<option value="">${ph}</option>` + opts.map(o => `<option${o === val ? ' selected' : ''}>${o}</option>`).join('');
     return el;
   };
   const row = (who, el) => {
@@ -764,10 +845,11 @@ function aiChatRenderPetDetail(n) {
     r.append(w, el);
     form.appendChild(r);
   };
-  const sex = sel('選択してください', ['オス','メス','分からない']);
+  const sex = sel('選択してください', ['オス','メス','分からない'], answers[`pet${n}Sex`]);
   const age = document.createElement('input');
   age.placeholder = '例：3歳、6ヶ月';
-  const neuter = sel('選択してください', ['済','未','分からない']);
+  age.value = answers[`pet${n}Age`] || '';
+  const neuter = sel('選択してください', ['済','未','分からない'], answers[`pet${n}Neuter`]);
   row('性別', sex);
   row('年齢', age);
   row('避妊・去勢', neuter);
@@ -787,12 +869,12 @@ function aiChatRenderPetDetail(n) {
   aiChatSetInput(form);
 }
 
-function aiChatRenderChips(options) {
+function aiChatRenderChips(q) {
   const row = document.createElement('div');
   row.className = 'ai-chat-chips';
-  options.forEach(o => {
+  q.options.forEach(o => {
     const b = document.createElement('button');
-    b.className = 'ai-chat-chip';
+    b.className = 'ai-chat-chip' + (answers[q.key] === o ? ' selected' : '');
     b.textContent = o;
     b.onclick = () => aiChatHandleAnswer(o);
     row.appendChild(b);
@@ -803,7 +885,7 @@ function aiChatRenderChips(options) {
 // 複数選択: 押すたびに選択/解除し「決定」で回答する。q.none (例:「飼ったことはない」) は他と同時に選べない
 function aiChatRenderMulti(q) {
   const options = q.none ? [...q.options, q.none] : q.options;
-  const picked = new Set();
+  const picked = new Set((answers[q.key] || '').split('、').filter(o => options.includes(o)));
   const wrap = document.createElement('div');
   const row = document.createElement('div');
   row.className = 'ai-chat-chips';
@@ -834,7 +916,12 @@ function aiChatRenderMulti(q) {
 
 function aiChatHandleAnswer(value, label) {
   const q = buildQuestions()[aiChatStep];
+  const old = answers[q.key];
   answers[q.key] = value;
+  if (editKeys) {
+    editChanged = true;
+    if (old !== value) clearDependents(q);
+  }
   aiChatPushUser(label || value);
   document.getElementById('aiChatInputArea').innerHTML = '';
   aiChatStep++;
@@ -843,47 +930,71 @@ function aiChatHandleAnswer(value, label) {
   later(aiChatAskCurrent, reply ? 1200 : 400);
 }
 
-// 送信前に見せる回答のまとめ (同居家族・先住ペットは1行にまとめる)
+// 送信前に見せる回答のまとめ: [項目名, 回答, 「変更」で聞き直す質問のキー] (同居家族・先住ペットは1行にまとめる)
 function answerSummary() {
   const a = answers;
+  const family = [`ご自身（${a.age}歳）`];
+  for (let n = 1; n <= memberCount(); n++) family.push(`${a[`member${n}RelOther`] || a[`member${n}Rel`]}（${a[`member${n}Age`]}）`);
   const lines = [
-    ['検討中', a.petType],
-    ['お住まい', a.prefecture],
-    ['年齢', a.age && a.age + '歳'],
-    ['暮らす人数', a.familySize],
-    ['同居家族', a.members],
-    ['住まい', a.housing],
-    ['飼育許可', a.permission],
-    ['アレルギー', a.allergy],
-    ['今のペット', a.hasPet === 'はい、飼っています' ? a.petCount : 'いない'],
+    ['検討中', a.petType, ['petType']],
+    ['お住まい', a.prefecture, ['prefecture']],
+    ['年齢', a.age && a.age + '歳', ['age']],
+    ['暮らす人数', a.familySize, ['familySize']],
+    ['同居家族', a.members && family.join('／'), ['members']],
+    ['住まい', a.housing, ['housing']],
+    ['飼育許可', a.permission, ['permission']],
+    ['アレルギー', a.allergy, ['allergy']],
+    ['今のペット', a.hasPet === 'はい、飼っています' ? a.petCount : 'いない', ['hasPet', 'petCount']],
   ];
   for (let n = 1; n <= MAX_PETS; n++) {
     if (!a[`pet${n}Kind`]) continue;
     const kind = a[`pet${n}Other`] || a[`pet${n}Kind`];
     const breed = a[`pet${n}Breed`] ? `（${a[`pet${n}Breed`]}）` : '';
-    lines.push([`${n}匹目`, `${kind}${breed}・${a[`pet${n}Sex`]}・${a[`pet${n}Age`]}・避妊去勢${a[`pet${n}Neuter`]}`]);
+    lines.push([`${n}匹目`, `${kind}${breed}・${a[`pet${n}Sex`]}・${a[`pet${n}Age`]}・避妊去勢${a[`pet${n}Neuter`]}`,
+      ['Kind', 'Other', 'Breed', 'Detail'].map(f => `pet${n}${f}`)]);
   }
   lines.push(
-    ['飼育経験', a.experience],
-    ['留守番（平日）', a.absenceWeekday],
-    ['留守番（週末・休日）', a.absenceWeekend],
-    ['過ごすスペース', a.space],
-    ['引越し・転勤', a.moving],
-    ['知ったきっかけ', a.sourceOther ? `その他（${a.sourceOther}）` : a.source],
-    ['お名前', a.name],
-    ['メール', a.email],
+    ['飼育経験', a.experience, ['experience']],
+    ['留守番（平日）', a.absenceWeekday, ['absenceWeekday']],
+    ['留守番（週末・休日）', a.absenceWeekend, ['absenceWeekend']],
+    ['過ごすスペース', a.space, ['space']],
+    ['引越し・転勤', a.moving, ['moving']],
+    ['知ったきっかけ', a.sourceOther ? `その他（${a.sourceOther}）` : a.source, ['source', 'sourceOther']],
+    ['お名前', a.name, ['name']],
+    ['メール', a.email, ['email']],
   );
-  return lines.filter(([, v]) => v).map(([k, v]) => `■${k}：${v}`).join('\n');
+  return lines.filter(([, v]) => v);
 }
 
-// 全問回答後: 回答のまとめと「フォームを送信」ボタンを出す
-function aiChatFinish() {
+function aiChatShowSummary() {
+  const box = document.createElement('div');
+  box.className = 'ai-msg bot ai-summary';
+  answerSummary().forEach(([label, value, keys]) => {
+    const row = document.createElement('div');
+    row.className = 'ai-summary-row';
+    const text = document.createElement('span');
+    text.textContent = `■${label}：${value}`;
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.className = 'ai-summary-edit';
+    edit.textContent = '変更';
+    edit.onclick = () => aiChatEdit(label, keys);
+    row.append(text, edit);
+    box.appendChild(row);
+  });
+  document.getElementById('aiChatMessages').appendChild(box);
+}
+
+// 全問回答後 (または変更のあと): 回答のまとめと「フォームを送信」ボタンを出す
+function aiChatFinish(edited) {
+  pruneAnswers();
+  aiChatStep = buildQuestions().length;
   const typing = aiChatShowTyping();
   later(() => {
     typing.remove();
-    aiChatPushBot('質問は以上です！ご回答内容をご確認ください。');
-    aiChatPushBot(answerSummary());
-    aiChatPushBot('間違いがなければ「フォームを送信」を押してください。\n直したい場合は「← 前の質問に戻る」から戻れます。');
+    aiChatPushBot(edited ? 'ご回答内容をご確認ください。' : '質問は以上です！ご回答内容をご確認ください。');
+    aiChatShowSummary();
+    aiChatPushBot('間違いがなければ「フォームを送信」を押してください。\n直したい項目があれば「変更」を押してください。');
     const btn = document.createElement('button');
     btn.className = 'ai-consent-btn';
     btn.textContent = 'フォームを送信';
@@ -919,6 +1030,7 @@ async function aiChatSubmit(btn) {
     });
     if ((await res.text()).trim() !== 'ok') throw new Error('送信先でエラー');
     document.getElementById('aiChatInputArea').innerHTML = '';
+    document.querySelectorAll('.ai-summary-edit').forEach(b => b.remove());
     aiChatPushBot('送信が完了しました！ありがとうございます。\nご入力いただいたメールアドレスへ、担当者より改めてご連絡いたします。');
   } catch (e) {
     btn.disabled = false;
