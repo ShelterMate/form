@@ -323,14 +323,17 @@ const Q = {
     replies: { '許可されていない': 'ペット可のお住まいでないと、譲渡が難しい場合があります。\nこのまま回答を続けていただいて大丈夫です。' } },
   allergy: { key: 'allergy', bot: 'あなたや一緒に暮らす方に、ペットアレルギーはありますか？', type: 'chips', options: ['なし','軽度のアレルギーあり','重度のアレルギーあり','未検査・分からない'] },
   // Tier 2: 精度マッチング用の追加質問
+  // 今ペットを飼っている人は、その子の種類を最初から選んでおき「飼ったことはない」は出さない
   experience: { key: 'experience', type: 'multi', none: '飼ったことはない',
     get bot() { return 'これまでに飼ったことのある動物を、すべて選んでください。' + (answers.hasPet === 'はい、飼っています' ? '\n（今飼っている子も含みます）' : ''); },
-    options: ['犬','猫','うさぎ・小動物','鳥','その他'] },
+    options: ['犬','猫','うさぎ・小動物','鳥','その他'],
+    hideNone: () => answers.hasPet === 'はい、飼っています',
+    prefill: () => answers.hasPet === 'はい、飼っています' ? [1, 2, 3, 4, 5].map(n => answers[`pet${n}Kind`]) : [] },
   hasPet: { key: 'hasPet', bot: '現在、ペットを飼っていますか？', type: 'chips', options: ['はい、飼っています','いいえ、飼っていません'] },
   petCount: { key: 'petCount', bot: '🐾 今飼っているペットは何匹ですか？', type: 'chips', options: ['1匹','2匹','3匹','4匹','5匹以上'] },
   absenceWeekday: { key: 'absenceWeekday', bot: '平日、家に誰もいない時間は1日どのくらいですか？\n（迎えた子がお留守番する時間です）', type: 'chips', options: ABSENCE_OPTIONS },
   absenceWeekend: { key: 'absenceWeekend', bot: '週末・休日、家に誰もいない時間は1日どのくらいですか？', type: 'chips', options: ABSENCE_OPTIONS },
-  space: { key: 'space', bot: '迎える子が過ごすスペースは？', type: 'chips', options: ['室内フリー','ケージ・サークル併用','室内専用部屋','屋外'] },
+  space: { key: 'space', bot: '迎える子が過ごすスペースを、すべて選んでください。', type: 'multi', options: ['室内フリー','ケージ・サークル併用','室内専用部屋','屋外'] },
   moving: { key: 'moving', bot: '今後数年以内に、引越しや転勤のご予定はありますか？', type: 'chips', options: ['予定なし','1年以内に予定あり','数年以内に可能性あり','分からない'] },
   // 最後の質問: 認知経路
   source: { key: 'source', bot: '保護ハブをどこで知りましたか？', type: 'chips', options: ['Instagram','Threads','ポッドキャスト','note','検索','その他'] },
@@ -739,17 +742,10 @@ function aiChatRenderChips(options) {
   aiChatSetInput(row);
 }
 
-// 複数選択: 今ペットを飼っている人は、その子の種類を最初から選んでおき「飼ったことはない」は出さない
+// 複数選択: 押すたびに選択/解除し「決定」で回答する。q.none (例:「飼ったことはない」) は他と同時に選べない
 function aiChatRenderMulti(q) {
-  const hasPet = answers.hasPet === 'はい、飼っています';
-  const options = hasPet ? q.options : [...q.options, q.none];
-  const picked = new Set();
-  if (hasPet) {
-    for (let n = 1; n <= MAX_PETS; n++) {
-      const kind = answers[`pet${n}Kind`];
-      if (q.options.includes(kind)) picked.add(kind);
-    }
-  }
+  const options = q.none && !(q.hideNone && q.hideNone()) ? [...q.options, q.none] : q.options;
+  const picked = new Set((q.prefill ? q.prefill() : []).filter(o => q.options.includes(o)));
   const wrap = document.createElement('div');
   const row = document.createElement('div');
   row.className = 'ai-chat-chips';
