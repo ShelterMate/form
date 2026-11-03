@@ -164,6 +164,13 @@ body {
   background: var(--terra-soft);
   color: var(--terra-deep);
 }
+.ai-chat-chip.selected {
+  border-color: var(--terra);
+  background: var(--terra-soft);
+  color: var(--terra-deep);
+  font-weight: 800;
+}
+.ai-chat-multi-done { margin-top: 12px; }
 .ai-chat-chip-primary {
   background: var(--terra) !important;
   border-color: var(--terra) !important;
@@ -316,7 +323,9 @@ const Q = {
     replies: { '許可されていない': 'ペット可のお住まいでないと、譲渡が難しい場合があります。\nこのまま回答を続けていただいて大丈夫です。' } },
   allergy: { key: 'allergy', bot: 'あなたや一緒に暮らす方に、ペットアレルギーはありますか？', type: 'chips', options: ['なし','軽度のアレルギーあり','重度のアレルギーあり','未検査・分からない'] },
   // Tier 2: 精度マッチング用の追加質問
-  experience: { key: 'experience', bot: '過去のペット飼育経験を教えてください。', type: 'chips', options: ['なし（はじめて）','あり（犬）','あり（猫）','あり（犬と猫）','あり（その他の動物）'] },
+  experience: { key: 'experience', type: 'multi', none: '飼ったことはない',
+    get bot() { return 'これまでに飼ったことのある動物を、すべて選んでください。' + (answers.hasPet === 'はい、飼っています' ? '\n（今飼っている子も含みます）' : ''); },
+    options: ['犬','猫','うさぎ・小動物','鳥','その他'] },
   hasPet: { key: 'hasPet', bot: '現在、ペットを飼っていますか？', type: 'chips', options: ['はい、飼っています','いいえ、飼っていません'] },
   petCount: { key: 'petCount', bot: '🐾 今飼っているペットは何匹ですか？', type: 'chips', options: ['1匹','2匹','3匹','4匹','5匹以上'] },
   absenceWeekday: { key: 'absenceWeekday', bot: '日中の想定留守番時間はどのくらいですか？', type: 'chips', options: ABSENCE_OPTIONS },
@@ -395,13 +404,15 @@ function buildQuestions() {
   list.push(Q.housing);
   // 戸建ての持ち家は飼育許可を聞かない (シートには「持ち家」と入れる)
   if (answers.housing !== '戸建て（持ち家）') list.push(Q.permission);
-  list.push(Q.allergy, Q.experience, Q.hasPet);
+  list.push(Q.allergy, Q.hasPet);
   // 現在飼っている → 頭数 → 頭数ぶん詳細
   if (answers.hasPet === 'はい、飼っています') {
     list.push(Q.petCount);
     const total = Math.min(parseInt(answers.petCount, 10) || 0, MAX_PETS);
     for (let n = 1; n <= total; n++) list.push(...petQuestions(n, total));
   }
+  // 飼育経験は今のペットのあとに聞く (今飼っている子の種類は最初から選んでおく)
+  if (answers.hasPet) list.push(Q.experience);
   list.push(Q.absenceWeekday, Q.absenceWeekend, Q.space, Q.moving, Q.source);
   if (answers.source === 'その他') list.push(Q.sourceOther);
   list.push(Q.name, Q.email);
@@ -627,6 +638,7 @@ function aiChatSetInput(...els) {
 
 function aiChatRenderInput(q) {
   if (q.type === 'chips') return aiChatRenderChips(q.options);
+  if (q.type === 'multi') return aiChatRenderMulti(q);
   if (q.type === 'members') return aiChatRenderMembers();
   const row = document.createElement('form');
   row.className = 'ai-chat-text-row';
@@ -725,6 +737,45 @@ function aiChatRenderChips(options) {
     row.appendChild(b);
   });
   aiChatSetInput(row);
+}
+
+// 複数選択: 今ペットを飼っている人は、その子の種類を最初から選んでおき「飼ったことはない」は出さない
+function aiChatRenderMulti(q) {
+  const hasPet = answers.hasPet === 'はい、飼っています';
+  const options = hasPet ? q.options : [...q.options, q.none];
+  const picked = new Set();
+  if (hasPet) {
+    for (let n = 1; n <= MAX_PETS; n++) {
+      const kind = answers[`pet${n}Kind`];
+      if (q.options.includes(kind)) picked.add(kind);
+    }
+  }
+  const wrap = document.createElement('div');
+  const row = document.createElement('div');
+  row.className = 'ai-chat-chips';
+  const buttons = options.map(o => {
+    const b = document.createElement('button');
+    b.className = 'ai-chat-chip';
+    b.textContent = o;
+    b.onclick = () => {
+      if (picked.has(o)) picked.delete(o);
+      else if (o === q.none) { picked.clear(); picked.add(o); }
+      else { picked.delete(q.none); picked.add(o); }
+      buttons.forEach(x => x.classList.toggle('selected', picked.has(x.textContent)));
+    };
+    row.appendChild(b);
+    return b;
+  });
+  buttons.forEach(x => x.classList.toggle('selected', picked.has(x.textContent)));
+  const done = document.createElement('button');
+  done.className = 'ai-consent-btn ai-chat-multi-done';
+  done.textContent = '決定';
+  done.onclick = () => {
+    if (!picked.size) { aiChatPushBot('ひとつ以上選んでください。'); return; }
+    aiChatHandleAnswer(options.filter(o => picked.has(o)).join('、'));
+  };
+  wrap.append(row, done);
+  aiChatSetInput(wrap);
 }
 
 function aiChatHandleAnswer(value, label) {
