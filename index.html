@@ -308,11 +308,8 @@ const Q = {
   prefecture: { key: 'prefecture', bot: 'どちらにお住まいですか？', type: 'select', placeholder: '都道府県を選択', options: PREFECTURES },
   age: { key: 'age', bot: 'おいくつですか？', type: 'text', numeric: true, placeholder: '例：32', suffix: '歳',
     validate: (v) => /^\d{1,3}$/.test(v), error: '年齢は数字で入力してください（例：32）。' },
-  household: { key: 'household', bot: 'どなたと暮らしていますか？', type: 'chips',
-    options: ['一人暮らし','親と同居（独身）','同棲カップル','夫婦（子供なし）','夫婦（子供あり）','シングルペアレント','ルームシェア','三世代同居','その他'] },
-  householdOther: { key: 'householdOther', bot: 'どなたと暮らしているか、教えてください。', type: 'text', placeholder: '例：兄弟と2人暮らし', validate: notEmpty },
-  familySize: { key: 'familySize', bot: 'ご自身を含めて、何人で暮らしていますか？', type: 'chips', options: ['2人','3人','4人','5人','6人以上'] },
-  members: { key: 'members', bot: '一緒に暮らしている方について教えてください。\nご関係と年齢をそれぞれ選んでください。', type: 'members' },
+  familySize: { key: 'familySize', bot: 'あなたを含めて、ペットと一緒に暮らすのは何人ですか？', type: 'chips', options: ['1人（一人暮らし）','2人','3人','4人','5人','6人以上'] },
+  members: { key: 'members', bot: '一緒に暮らす方について教えてください。\nご関係と年齢をそれぞれ選んでください。', type: 'members' },
   // Tier 1: 基本マッチング質問
   housing: { key: 'housing', bot: '住まいの種類は？', type: 'chips', options: ['戸建て（持ち家）','戸建て（賃貸）','分譲マンション','賃貸マンション・アパート'] },
   permission: { key: 'permission', bot: 'ペット飼育の許可状況を教えてください。', type: 'chips', options: ['持ち家','規約で許可されている','大家さん/管理会社に相談中','許可されていない'] },
@@ -334,7 +331,7 @@ const Q = {
     validate: (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), error: 'メールアドレスの形式が正しくないようです。もう一度ご確認ください。' }
 };
 
-// 同居家族: 人数を聞いたあと、ご自身＋一緒に暮らす方を1画面にまとめて聞く (6人以上は5人目まで)
+// 同居家族: 人数を聞いたあと、ご自身以外の一緒に暮らす方を1画面にまとめて聞く (6人以上は5人目まで)
 const MAX_MEMBERS = 5;
 const MEMBER_RELATIONS = ['配偶者・パートナー','子供','親','祖父母','兄弟姉妹','友人・ルームメイト','その他'];
 const MEMBER_AGES = ['0〜5歳（未就学）','6〜12歳（小学生）','13〜17歳','18〜29歳','30代','40代','50代','60代','70歳以上'];
@@ -351,13 +348,22 @@ function ageBandOf(age) {
 }
 // 以前の「小さなお子様の有無」の列は、家族の年齢から自動で埋める
 function childrenFromMembers() {
-  if (answers.household === '一人暮らし') return 'いない';
   const ages = [];
   for (let n = 1; n <= memberCount(); n++) ages.push(answers[`member${n}Age`]);
   if (ages.includes(MEMBER_AGES[0])) return '未就学児がいる';
   if (ages.includes(MEMBER_AGES[1])) return '小学生がいる';
   if (ages.includes(MEMBER_AGES[2])) return '中学生以上の子がいる';
   return 'いない';
+}
+// 以前の「家族構成」の列は、同居家族の関係から自動で埋める (例: 配偶者・パートナー、子供)
+function householdFromMembers() {
+  if (memberCount() === 0) return '一人暮らし';
+  const rels = [];
+  for (let n = 1; n <= memberCount(); n++) {
+    const r = answers[`member${n}RelOther`] || answers[`member${n}Rel`];
+    if (r && !rels.includes(r)) rels.push(r);
+  }
+  return rels.join('、');
 }
 
 // 先住ペットは頭数ぶん同じ質問をくり返す (5匹以上は5匹目まで詳しく聞く)
@@ -383,9 +389,8 @@ function petQuestions(n, total) {
 
 // ここまでの回答から質問の並びを組み立てる (分岐があるので毎回作り直す。戻ったときも同じ並びになる)
 function buildQuestions() {
-  const list = [Q.petType, Q.prefecture, Q.age, Q.household];
-  if (answers.household === 'その他') list.push(Q.householdOther);
-  if (answers.household && answers.household !== '一人暮らし') list.push(Q.familySize, Q.members);
+  const list = [Q.petType, Q.prefecture, Q.age, Q.familySize];
+  if (answers.familySize && memberCount() > 0) list.push(Q.members);
   list.push(Q.housing, Q.permission, Q.allergy, Q.experience, Q.hasPet);
   // 現在飼っている → 頭数 → 頭数ぶん詳細
   if (answers.hasPet === 'はい、飼っています') {
@@ -672,8 +677,6 @@ function aiChatRenderMembers() {
     r.append(w, ...els);
     form.appendChild(r);
   };
-  const selfAge = sel('年齢', MEMBER_AGES, ageBandOf(answers.age));
-  row('ご自身', selfAge);
   const rows = [];
   for (let n = 1; n <= memberCount(); n++) {
     const rel = sel('ご関係', MEMBER_RELATIONS);
@@ -691,10 +694,9 @@ function aiChatRenderMembers() {
   form.appendChild(btn);
   form.onsubmit = (e) => {
     e.preventDefault();
-    const missing = !selfAge.value || rows.some(r => !r.rel.value || !r.age.value || (r.rel.value === 'その他' && !r.other.value.trim()));
+    const missing = rows.some(r => !r.rel.value || !r.age.value || (r.rel.value === 'その他' && !r.other.value.trim()));
     if (missing) { aiChatPushBot('すべての方のご関係と年齢を選んでください。'); return; }
-    answers.selfAgeBand = selfAge.value;
-    const parts = [`ご自身（${selfAge.value}）`];
+    const parts = [];
     rows.forEach((r, i) => {
       const n = i + 1;
       const relText = r.rel.value === 'その他' ? r.other.value.trim() : r.rel.value;
@@ -752,8 +754,9 @@ async function aiChatSubmit(btn) {
   }
   btn.disabled = true;
   btn.textContent = '送信中…';
-  const values = { ...answers, privacyAgreed: privacyAgreed ? '同意' : '', hasChildren: childrenFromMembers() };
-  if (answers.household === '一人暮らし') values.familySize = '1人';
+  const values = { ...answers, privacyAgreed: privacyAgreed ? '同意' : '', hasChildren: childrenFromMembers(),
+    household: householdFromMembers(), selfAgeBand: ageBandOf(answers.age) };
+  if (memberCount() === 0) values.familySize = '1人';
   const fields = SHEET_FIELDS.map(([key, label]) => {
     const q = buildQuestions().find(x => x.key === key);
     const v = values[key] || '';
