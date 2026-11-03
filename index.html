@@ -218,11 +218,14 @@ body {
   background: var(--cream); outline: none;
 }
 .ai-member-row select:focus, .ai-member-row input:focus { border-color: var(--terra); }
-.ai-member-row input { flex-basis: 100%; margin-left: 72px; }
+.ai-member-row input.ai-member-other { flex-basis: 100%; margin-left: 72px; }
+.ai-member-age { flex: 0 0 96px; display: flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 700; color: var(--ink); }
+.ai-member-row .ai-member-age input { flex: 1 1 auto; width: 100%; }
+.ai-member-fixed { flex: 1 1 120px; padding: 8px 10px; font-size: 14px; font-weight: 700; color: var(--ink-soft); }
 .ai-members .ai-chat-send-btn { align-self: flex-end; padding: 11px 26px; }
 @media (max-width: 540px) {
   .ai-member-who { flex-basis: 100%; }
-  .ai-member-row input { margin-left: 0; }
+  .ai-member-row input.ai-member-other { margin-left: 0; }
 }
 /* プライバシーポリシー (チャット内の文書カード) */
 .ai-privacy {
@@ -316,7 +319,7 @@ const Q = {
   age: { key: 'age', bot: 'おいくつですか？', type: 'text', numeric: true, placeholder: '例：32', suffix: '歳',
     validate: (v) => /^\d{1,3}$/.test(v) && v >= 1 && v <= 100, error: '年齢は1〜100の数字で入力してください（例：32）。' },
   familySize: { key: 'familySize', bot: 'あなたを含めて、ペットと一緒に暮らすのは何人ですか？', type: 'chips', options: ['1人（一人暮らし）','2人','3人','4人','5人','6人以上'] },
-  members: { key: 'members', bot: '一緒に暮らす方について教えてください。\nご関係と年齢をそれぞれ選んでください。', type: 'members' },
+  members: { key: 'members', bot: '一緒に暮らす方について教えてください。\nご関係を選び、年齢を入力してください。', type: 'members' },
   // Tier 1: 基本マッチング質問
   housing: { key: 'housing', bot: '住まいの種類は？', type: 'chips', options: ['戸建て（持ち家）','戸建て（賃貸）','分譲マンション','賃貸マンション・アパート','社宅・寮','その他'] },
   permission: { key: 'permission', bot: 'ペットを飼ってよい住まいですか？', type: 'chips', options: ['規約・契約で許可されている','大家さん・管理会社に相談中','許可されていない','分からない'],
@@ -344,9 +347,10 @@ const Q = {
     validate: (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), error: 'メールアドレスの形式が正しくないようです。もう一度ご確認ください。' }
 };
 
-// 同居家族: 人数を聞いたあと、ご自身以外の一緒に暮らす方を1画面にまとめて聞く (6人以上は5人目まで)
+// 同居家族: 人数を聞いたあと、ご自身 (年齢は回答済みなので表示だけ) ＋一緒に暮らす方を1画面にまとめて聞く (6人以上は6人目まで)
+// 年齢は数字で入力してもらう。シートの「同居家族N：年代」の列には「35歳」のように入る (列名は既存の列に合わせて据え置き)
 const MAX_MEMBERS = 5;
-const MEMBER_RELATIONS = ['配偶者・パートナー','子供','親','祖父母','兄弟姉妹','友人・ルームメイト','その他'];
+const MEMBER_RELATIONS = ['配偶者','パートナー（恋人）','子供','親','祖父母','兄弟姉妹','友人・ルームメイト','その他'];
 const MEMBER_AGES = ['0〜5歳（未就学）','6〜12歳（小学生）','13〜17歳','18〜29歳','30代','40代','50代','60代','70歳以上'];
 function memberCount() { return Math.min((parseInt(answers.familySize, 10) || 1) - 1, MAX_MEMBERS); }
 function ageBandOf(age) {
@@ -362,7 +366,7 @@ function ageBandOf(age) {
 // 以前の「小さなお子様の有無」の列は、家族の年齢から自動で埋める
 function childrenFromMembers() {
   const ages = [];
-  for (let n = 1; n <= memberCount(); n++) ages.push(answers[`member${n}Age`]);
+  for (let n = 1; n <= memberCount(); n++) ages.push(ageBandOf(answers[`member${n}Age`]));
   if (ages.includes(MEMBER_AGES[0])) return '未就学児がいる';
   if (ages.includes(MEMBER_AGES[1])) return '小学生がいる';
   if (ages.includes(MEMBER_AGES[2])) return '中学生以上の子がいる';
@@ -471,7 +475,7 @@ const PRIVACY_HTML = `
   <h4>第1条（取得する情報）</h4>
   <p>当社は、本フォームにおいて、以下の情報をお尋ねします。</p>
   <ol>
-    <li>迎えたい動物の種類、お住まいの都道府県、年齢、家族構成、同居人数、同居されている方のご関係・年代</li>
+    <li>迎えたい動物の種類、お住まいの都道府県、年齢、家族構成、同居人数、同居されている方のご関係・年齢</li>
     <li>住まいの種類、ペット飼育の許可状況、ご家族のペットアレルギーの有無</li>
     <li>過去のペット飼育経験、現在飼っているペットの情報（頭数・種類・犬種/猫種・性別・年齢・避妊去勢の状況）</li>
     <li>留守番時間、迎える子が過ごすスペース、今後の引越し・転勤の予定</li>
@@ -696,15 +700,29 @@ function aiChatRenderMembers() {
     r.append(w, ...els);
     form.appendChild(r);
   };
+  const fixed = (text) => {
+    const s = document.createElement('span');
+    s.className = 'ai-member-fixed';
+    s.textContent = text;
+    return s;
+  };
+  row('1人目', fixed('ご自身'), fixed(`${answers.age}歳`));
   const rows = [];
   for (let n = 1; n <= memberCount(); n++) {
     const rel = sel('ご関係', MEMBER_RELATIONS);
-    const age = sel('年齢', MEMBER_AGES);
+    const ageWrap = document.createElement('label');
+    ageWrap.className = 'ai-member-age';
+    const age = document.createElement('input');
+    age.inputMode = 'numeric';
+    age.maxLength = 3;
+    age.placeholder = '年齢';
+    ageWrap.append(age, '歳');
     const other = document.createElement('input');
+    other.className = 'ai-member-other';
     other.placeholder = 'ご関係を入力（例：いとこ）';
     other.style.display = 'none';
     rel.onchange = () => { other.style.display = rel.value === 'その他' ? '' : 'none'; };
-    row(`${n}人目`, rel, age, other);
+    row(`${n + 1}人目`, rel, ageWrap, other);
     rows.push({ rel, age, other });
   }
   const btn = document.createElement('button');
@@ -713,16 +731,19 @@ function aiChatRenderMembers() {
   form.appendChild(btn);
   form.onsubmit = (e) => {
     e.preventDefault();
-    const missing = rows.some(r => !r.rel.value || !r.age.value || (r.rel.value === 'その他' && !r.other.value.trim()));
-    if (missing) { aiChatPushBot('すべての方のご関係と年齢を選んでください。'); return; }
-    const parts = [];
+    const validAge = (v) => /^\d{1,3}$/.test(v) && v <= 120;
+    const missing = rows.some(r => !r.rel.value || !r.age.value.trim() || (r.rel.value === 'その他' && !r.other.value.trim()));
+    if (missing) { aiChatPushBot('すべての方のご関係と年齢を入力してください。'); return; }
+    if (rows.some(r => !validAge(r.age.value.trim()))) { aiChatPushBot('年齢は数字で入力してください（例：35）。\n1歳未満のお子様は「0」と入力してください。'); return; }
+    const parts = [`ご自身（${answers.age}歳）`];
     rows.forEach((r, i) => {
       const n = i + 1;
       const relText = r.rel.value === 'その他' ? r.other.value.trim() : r.rel.value;
+      const ageText = `${parseInt(r.age.value, 10)}歳`;
       answers[`member${n}Rel`] = r.rel.value;
-      answers[`member${n}Age`] = r.age.value;
+      answers[`member${n}Age`] = ageText;
       if (r.rel.value === 'その他') answers[`member${n}RelOther`] = relText;
-      parts.push(`${relText}（${r.age.value}）`);
+      parts.push(`${relText}（${ageText}）`);
     });
     aiChatHandleAnswer(parts.join('／'));
   };
