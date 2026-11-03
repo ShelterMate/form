@@ -314,7 +314,7 @@ const Q = {
   petType: { key: 'petType', bot: 'まず、どちらを検討中ですか？', type: 'chips', options: ['犬','猫','どちらも'] },
   prefecture: { key: 'prefecture', bot: 'どちらにお住まいですか？', type: 'select', placeholder: '都道府県を選択', options: PREFECTURES },
   age: { key: 'age', bot: 'おいくつですか？', type: 'text', numeric: true, placeholder: '例：32', suffix: '歳',
-    validate: (v) => /^\d{1,3}$/.test(v), error: '年齢は数字で入力してください（例：32）。' },
+    validate: (v) => /^\d{1,3}$/.test(v) && v >= 1 && v <= 100, error: '年齢は1〜100の数字で入力してください（例：32）。' },
   familySize: { key: 'familySize', bot: 'あなたを含めて、ペットと一緒に暮らすのは何人ですか？', type: 'chips', options: ['1人（一人暮らし）','2人','3人','4人','5人','6人以上'] },
   members: { key: 'members', bot: '一緒に暮らす方について教えてください。\nご関係と年齢をそれぞれ選んでください。', type: 'members' },
   // Tier 1: 基本マッチング質問
@@ -336,7 +336,7 @@ const Q = {
   space: { key: 'space', bot: '迎える子が過ごすスペースを、すべて選んでください。', type: 'multi', options: ['室内フリー','ケージ・サークル併用','室内専用部屋','屋外'] },
   moving: { key: 'moving', bot: '今後数年以内に、引越しや転勤のご予定はありますか？', type: 'chips', options: ['予定なし','1年以内に予定あり','数年以内に可能性あり','分からない'] },
   // 最後の質問: 認知経路
-  source: { key: 'source', bot: '保護ハブをどこで知りましたか？', type: 'chips', options: ['Instagram','Threads','ポッドキャスト','note','検索','その他'] },
+  source: { key: 'source', bot: '保護ハブをどこで知りましたか？', type: 'chips', options: ['Instagram','Threads','ポッドキャスト','note','検索','友人の紹介','譲渡会','その他'] },
   sourceOther: { key: 'sourceOther', bot: 'どこで知ったか、よろしければ教えてください。', type: 'text', placeholder: '例：友人の紹介、譲渡会 など', validate: notEmpty },
   // 最後: 担当者から連絡するための連絡先
   name: { key: 'name', bot: '最後に、ご連絡先を教えてください。\nまず、お名前を入力してください。', type: 'text', placeholder: '例：山田 花子', autocomplete: 'name', validate: notEmpty },
@@ -785,12 +785,47 @@ function aiChatHandleAnswer(value, label) {
   later(aiChatAskCurrent, reply ? 1200 : 400);
 }
 
-// 全問回答後: 「フォームを送信」ボタンを出す
+// 送信前に見せる回答のまとめ (同居家族・先住ペットは1行にまとめる)
+function answerSummary() {
+  const a = answers;
+  const lines = [
+    ['検討中', a.petType],
+    ['お住まい', a.prefecture],
+    ['年齢', a.age && a.age + '歳'],
+    ['暮らす人数', a.familySize],
+    ['同居家族', a.members],
+    ['住まい', a.housing],
+    ['飼育許可', a.permission],
+    ['アレルギー', a.allergy],
+    ['今のペット', a.hasPet === 'はい、飼っています' ? a.petCount : 'いない'],
+  ];
+  for (let n = 1; n <= MAX_PETS; n++) {
+    if (!a[`pet${n}Kind`]) continue;
+    const kind = a[`pet${n}Other`] || a[`pet${n}Kind`];
+    const breed = a[`pet${n}Breed`] ? `（${a[`pet${n}Breed`]}）` : '';
+    lines.push([`${n}匹目`, `${kind}${breed}・${a[`pet${n}Sex`]}・${a[`pet${n}Age`]}・避妊去勢${a[`pet${n}Neuter`]}`]);
+  }
+  lines.push(
+    ['飼育経験', a.experience],
+    ['留守番（平日）', a.absenceWeekday],
+    ['留守番（週末・休日）', a.absenceWeekend],
+    ['過ごすスペース', a.space],
+    ['引越し・転勤', a.moving],
+    ['知ったきっかけ', a.sourceOther ? `その他（${a.sourceOther}）` : a.source],
+    ['お名前', a.name],
+    ['メール', a.email],
+  );
+  return lines.filter(([, v]) => v).map(([k, v]) => `■${k}：${v}`).join('\n');
+}
+
+// 全問回答後: 回答のまとめと「フォームを送信」ボタンを出す
 function aiChatFinish() {
   const typing = aiChatShowTyping();
   later(() => {
     typing.remove();
-    aiChatPushBot('質問は以上です！\n内容に間違いがなければ「フォームを送信」を押してください。');
+    aiChatPushBot('質問は以上です！ご回答内容をご確認ください。');
+    aiChatPushBot(answerSummary());
+    aiChatPushBot('間違いがなければ「フォームを送信」を押してください。\n直したい場合は「← 前の質問に戻る」から戻れます。');
     const btn = document.createElement('button');
     btn.className = 'ai-consent-btn';
     btn.textContent = 'フォームを送信';
@@ -818,13 +853,13 @@ async function aiChatSubmit(btn) {
   });
   const payload = { ...values, fields };
   try {
-    // Apps Script はCORSヘッダーを返さないので no-cors で送る (応答は読めないが、書き込みは行われる)
-    await fetch(SHEET_URL, {
+    // text/plain で送ればプリフライトなしで応答を読める。Apps Script は成功時に 'ok' を返す
+    const res = await fetch(SHEET_URL, {
       method: 'POST',
-      mode: 'no-cors',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: JSON.stringify(payload)
     });
+    if ((await res.text()).trim() !== 'ok') throw new Error('送信先でエラー');
     document.getElementById('aiChatInputArea').innerHTML = '';
     aiChatPushBot('送信が完了しました！ありがとうございます。\nご入力いただいたメールアドレスへ、担当者より改めてご連絡いたします。');
   } catch (e) {
