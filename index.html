@@ -330,7 +330,7 @@ const Q = {
     get bot() { return 'これまでに飼ったことのある動物を、すべて選んでください。' + (answers.hasPet === 'はい、飼っています' ? '\n（今飼っている子は含みません）' : ''); },
     options: ['犬','猫','うさぎ・小動物','鳥','その他'] },
   hasPet: { key: 'hasPet', bot: '現在、ペットを飼っていますか？', type: 'chips', options: ['はい、飼っています','いいえ、飼っていません'] },
-  petCount: { key: 'petCount', bot: '🐾 今飼っているペットは何匹ですか？', type: 'chips', options: ['1匹','2匹','3匹','4匹','5匹以上'] },
+  petCount: { key: 'petCount', bot: '今飼っているペットは何匹ですか？', type: 'chips', options: ['1匹','2匹','3匹','4匹','5匹以上'] },
   absenceWeekday: { key: 'absenceWeekday', bot: '平日、家に誰もいない時間は1日どのくらいですか？\n（迎えた子がお留守番する時間です）', type: 'chips', options: ABSENCE_OPTIONS },
   absenceWeekend: { key: 'absenceWeekend', bot: '週末・休日、家に誰もいない時間は1日どのくらいですか？', type: 'chips', options: ABSENCE_OPTIONS },
   space: { key: 'space', bot: '迎える子が過ごすスペースを、すべて選んでください。', type: 'multi', options: ['室内フリー','ケージ・サークル併用','室内専用部屋','屋外'] },
